@@ -1,0 +1,120 @@
+<div id="loader" class="loader"></div>
+
+<div id="app-content" class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl hidden">
+    <!-- Header -->
+    <header class="mb-8 flex justify-between items-center flex-wrap gap-4">
+        <div>
+            <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Delivery Manifest</h1>
+            <p class="text-slate-500 mt-1">Manage and track your patient deliveries efficiently.</p>
+        </div>
+        <button id="export-btn" class="bg-green-600 text-white font-semibold px-4 py-2 rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+              <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+            </svg>
+            Export to Excel
+        </button>
+    </header>
+
+    <!-- Form to add new entry -->
+    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8">
+        <h2 class="text-xl font-semibold mb-5 text-slate-900">Add New Delivery</h2>
+        <form id="manifest-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 items-end">
+            <div class="lg:col-span-2">
+                <label for="date" class="block text-sm font-medium text-slate-600 mb-1">Date</label>
+                <input type="date" id="date" name="date" required class="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+            </div>
+            <div class="lg:col-span-3">
+                <label for="patientName" class="block text-sm font-medium text-slate-600 mb-1">Patient Name</label>
+                <input type="text" id="patientName" name="patientName" placeholder="e.g., John Doe" required class="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+            </div>
+            <div class="lg:col-span-2">
+                <label for="rxNumbers" class="block text-sm font-medium text-slate-600 mb-1">RX #(s)</label>
+                <input type="text" id="rxNumbers" name="rxNumbers" placeholder="e.g., RX1, RX2" required class="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                 <p class="text-xs text-slate-400 mt-1">Separate multiple RX numbers with a comma.</p>
+            </div>
+            <div class="lg:col-span-3">
+                <label for="trackingNumber" class="block text-sm font-medium text-slate-600 mb-1">Tracking Number</label>
+                <input type="text" id="trackingNumber" name="trackingNumber" placeholder="e.g., 1Z..." required class="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+            </div>
+            <div class="lg:col-span-2">
+                <button type="submit" class="w-full bg-blue-600 text-white font-semibold px-4 py-2 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out">
+                    Add Delivery
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Search and Filter Section -->
+    <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="md:col-span-1">
+            <label for="search-input" class="block text-sm font-medium text-slate-600 mb-1">Search</label>
+            <div class="relative">
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <svg class="h-5 w-5 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <input type="text" id="search-input" class="block w-full rounded-md border-slate-300 pl-10 focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 shadow-sm" placeholder="Search by patient, RX, or tracking...">
+            </div>
+        </div>
+         <div>
+            <label for="start-date" class="block text-sm font-medium text-slate-600 mb-1">Start Date</label>
+            <input type="date" id="start-date" name="start-date" class="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+        </div>
+        <div>
+            <label for="end-date" class="block text-sm font-medium text-slate-600 mb-1">End Date</label>
+            <input type="date" id="end-date" name="end-date" class="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+        </div>
+    </div>
+
+    <!-- Manifest Table -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+        <table class="w-full text-left">
+            <thead class="bg-slate-50">
+                <tr class="border-b border-slate-200">
+                    <th class="p-4 text-sm font-semibold text-slate-600">Date</th>
+                    <th class="p-4 text-sm font-semibold text-slate-600">Patient Name</th>
+                    <th class="p-4 text-sm font-semibold text-slate-600">RX #(s)</th>
+                    <th class="p-4 text-sm font-semibold text-slate-600">Tracking Number</th>
+                    <th class="p-4 text-sm font-semibold text-slate-600 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="manifest-table-body" class="divide-y divide-slate-200">
+                <!-- Rows will be dynamically inserted here -->
+            </tbody>
+        </table>
+         <div id="empty-state" class="hidden text-center p-8 text-slate-500">
+            <p>No entries yet. Add a new delivery using the form above.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="delete-confirm-modal" class="fixed inset-0 bg-slate-900 bg-opacity-60 flex items-center justify-center p-4 hidden modal-enter">
+    <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+        <div class="flex items-start">
+            <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
+                </svg>
+            </div>
+            <div class="ml-4 text-left">
+                <h3 class="text-lg font-bold text-slate-900">Delete Entry</h3>
+                <div class="mt-2">
+                    <p id="modal-text" class="text-sm text-slate-600">
+                        Are you sure you want to delete this entry? This action cannot be undone.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="mt-6 sm:flex sm:flex-row-reverse gap-3">
+            <button id="confirm-delete-btn" type="button" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:w-auto sm:text-sm">
+                Yes, Delete
+            </button>
+            <button id="cancel-delete-btn" type="button" class="mt-3 w-full inline-flex justify-center rounded-md border border-slate-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:w-auto sm:text-sm">
+                No, Cancel
+            </button>
+        </div>
+    </div>
+</div>
