@@ -22,7 +22,7 @@ Read CLAUDE.md first for project conventions. Use TodoWrite to update checkboxes
 
 - [x] Date range filter default — change from "Last 14 days" to "Last 30 days" in DashboardPage.jsx. The 14-day default causes confusion when older shipments seem missing.
 
-- [ ] Add "All" button to status filter that shows count — currently the "All" tab doesn't show how many total shipments there are. Add a count badge like "All (210)".
+- [x] Add "All" button to status filter that shows count — currently the "All" tab doesn't show how many total shipments there are. Add a count badge like "All (210)".
 
 - [ ] Data scrub feature for disabled fields — HIPAA minimum necessary compliance. When a field is disabled in Settings → Shipment Fields, show a "Scrub data" button next to it. Clicking it opens a confirmation modal: "This will permanently delete [Field Name] from all X shipments in your organization. This cannot be undone." On confirm, run a Firestore batch update setting that field to null/deleted on every shipment in `organizations/{slug}/shipments`. Log the action to audit log: `settings.field_scrubbed` with field name and record count. Implementation details:
   - File: `v2/src/pages/SettingsPage.jsx` — add scrub button next to each disabled field toggle in the Shipment Fields section

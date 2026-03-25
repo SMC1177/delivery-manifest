@@ -44,9 +44,9 @@ export default function DashboardPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  const filtered = useMemo(() => {
+  // Shipments matching date + search filters (before status filter applied)
+  const dateSearchFiltered = useMemo(() => {
     return shipments.filter((s) => {
-      if (statusFilter !== 'all' && s.status !== statusFilter) return false
       const shipDate = s.date || ''
       if (dateFrom && shipDate < dateFrom) return false
       if (dateTo && shipDate > dateTo) return false
@@ -65,7 +65,21 @@ export default function DashboardPage() {
       }
       return true
     })
-  }, [shipments, statusFilter, dateFrom, dateTo, search])
+  }, [shipments, dateFrom, dateTo, search])
+
+  const filtered = useMemo(() => {
+    if (statusFilter === 'all') return dateSearchFiltered
+    return dateSearchFiltered.filter((s) => s.status === statusFilter)
+  }, [dateSearchFiltered, statusFilter])
+
+  // Counts per status for filter tab badges
+  const statusCounts = useMemo(() => {
+    const counts = { all: dateSearchFiltered.length }
+    for (const s of dateSearchFiltered) {
+      counts[s.status] = (counts[s.status] || 0) + 1
+    }
+    return counts
+  }, [dateSearchFiltered])
 
   async function handleAdd(data) {
     const result = await addShipment(data)
@@ -327,6 +341,13 @@ export default function DashboardPage() {
             }`}
           >
             {f.label}
+            {statusCounts[f.value] != null && (
+              <span className={`ml-1.5 text-xs ${
+                statusFilter === f.value ? 'text-blue-200' : 'text-slate-400'
+              }`}>
+                ({statusCounts[f.value]})
+              </span>
+            )}
           </button>
         ))}
       </div>
