@@ -39,11 +39,11 @@ When touching shared resources (Firestore listeners, Firebase Auth state, carrie
 - **Auth:** Firebase Auth with Google Sign-In, email/password, TOTP MFA
 - **Data:** Firestore — `organizations/{slug}/shipments`, `organizations/{slug}/members`
 - **Carrier tracking:** Cloud Functions call FedEx/UPS APIs, store status in shipment docs
-- **Scheduled sync:** Cloud Scheduler triggers `scheduledFedExSync` and `scheduledUpsSync` 4x/day
+- **Scheduled sync:** Cloud Scheduler triggers `scheduledFedExSync` and `scheduledUpsStatusSync` 4x/day
 - **Carrier field:** lowercase only (`ups`, `fedex`). Old data had uppercase — app handles both via case-insensitive matching in `lib/carriers.js`
 
 ## Known Gotchas
 - Old shipment records have `carrier: "UPS"` (uppercase) — `getTrackingUrl()` and `getCarrierName()` normalize to lowercase
 - Two org slugs exist: `woodlandsrx` (active, 210 records) and `woodlands-pm` (migration artifact, can be cleaned up)
 - V1 data lives at `artifacts/delivery-manifest-c3deb/public/data/manifest` — do not modify
-- `scheduledUpsSync` Cloud Run service has a name conflict — needs manual cleanup in GCP console
+- Old `scheduledUpsSync` Cloud Run service was orphaned — function renamed to `scheduledUpsStatusSync` to avoid HTTP 409 conflict on deploy

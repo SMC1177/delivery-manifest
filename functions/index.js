@@ -523,7 +523,7 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
  * Scheduled function: runs on the same schedule as FedEx and syncs all active
  * UPS shipments across all organizations.
  */
-export const scheduledUpsSync = onSchedule(
+export const scheduledUpsStatusSync = onSchedule(
   {
     schedule: '0 7,11,15,20 * * *',
     timeZone: 'America/Chicago',
