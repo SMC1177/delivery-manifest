@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { collection, getDocs } from 'firebase/firestore'
 import { auth, db, storage } from '../lib/firebase'
 import { useOrganization } from '../hooks/useOrganization'
 import { useInvites } from '../hooks/useInvites'
@@ -9,6 +10,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../components/Toast'
 import { formatCentralTime } from '../hooks/useShipments'
 import TotpSetup from '../components/TotpSetup'
+import ScrubConfirmModal from '../components/ScrubConfirmModal'
+import { scrubFieldFromShipments, SCRUBBABLE_FIELDS } from '../lib/scrubField'
 
 function BrandingSection({ org, slug, updateOrgSettings, logAction, addToast }) {
   const logoInputRef = useRef(null)
@@ -172,6 +175,33 @@ export default function SettingsPage() {
 
   // Audit log expanded
   const [showAudit, setShowAudit] = useState(false)
+
+  // Scrub modal state
+  const [scrubModal, setScrubModal] = useState(null) // { fieldKey, fieldLabel, shipmentCount }
+
+  async function handleScrubClick(fieldKey, fieldLabel) {
+    try {
+      const colRef = collection(db, 'organizations', slug, 'shipments')
+      const snapshot = await getDocs(colRef)
+      setScrubModal({ fieldKey, fieldLabel, shipmentCount: snapshot.size })
+    } catch (err) {
+      addToast('Failed to load shipment count: ' + err.message, 'error')
+    }
+  }
+
+  async function handleScrubConfirm() {
+    if (!scrubModal) return
+    const { fieldKey, fieldLabel } = scrubModal
+    try {
+      const count = await scrubFieldFromShipments(slug, fieldKey)
+      await logAction('settings.field_scrubbed', fieldKey, { fieldName: fieldLabel, recordCount: count })
+      addToast(`Scrubbed ${fieldLabel} from ${count} shipments`)
+    } catch (err) {
+      addToast('Scrub failed: ' + err.message, 'error')
+    } finally {
+      setScrubModal(null)
+    }
+  }
 
   // Shipment field config
   const AVAILABLE_FIELDS = [
@@ -380,6 +410,7 @@ export default function SettingsPage() {
     'member.added': 'Added member',
     'member.removed': 'Removed member',
     'settings.changed': 'Changed settings',
+    'settings.field_scrubbed': 'Scrubbed field data',
   }
 
   return (
@@ -482,29 +513,54 @@ export default function SettingsPage() {
           Choose which optional fields appear on shipments. Core fields (Date, Patient Name, Rx Numbers, Tracking #, Status) are always shown.
         </p>
         <div className="space-y-3">
-          {AVAILABLE_FIELDS.map((field) => (
-            <label
-              key={field.key}
-              className="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors"
-            >
-              <div>
-                <span className="text-sm font-medium text-slate-900">{field.label}</span>
-                <p className="text-xs text-slate-500">{field.description}</p>
+          {AVAILABLE_FIELDS.map((field) => {
+            const isEnabled = enabledFields.includes(field.key)
+            const canScrub = !isEnabled && SCRUBBABLE_FIELDS.includes(field.key)
+            return (
+              <div
+                key={field.key}
+                className="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+              >
+                <div>
+                  <span className="text-sm font-medium text-slate-900">{field.label}</span>
+                  <p className="text-xs text-slate-500">{field.description}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {canScrub && (
+                    <button
+                      type="button"
+                      onClick={() => handleScrubClick(field.key, field.label)}
+                      className="px-3 py-1 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                    >
+                      Scrub data
+                    </button>
+                  )}
+                  <label className="relative cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isEnabled}
+                      onChange={() => handleFieldToggle(field.key)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-6 bg-slate-200 rounded-full peer-checked:bg-blue-600 transition-colors"></div>
+                    <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform"></div>
+                  </label>
+                </div>
               </div>
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  checked={enabledFields.includes(field.key)}
-                  onChange={() => handleFieldToggle(field.key)}
-                  className="sr-only peer"
-                />
-                <div className="w-10 h-6 bg-slate-200 rounded-full peer-checked:bg-blue-600 transition-colors"></div>
-                <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform"></div>
-              </div>
-            </label>
-          ))}
+            )
+          })}
         </div>
       </div>
+
+      {/* Scrub Confirmation Modal */}
+      {scrubModal && (
+        <ScrubConfirmModal
+          fieldLabel={scrubModal.fieldLabel}
+          shipmentCount={scrubModal.shipmentCount}
+          onConfirm={handleScrubConfirm}
+          onCancel={() => setScrubModal(null)}
+        />
+      )}
 
       {/* Members List */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
