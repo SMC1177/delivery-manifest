@@ -1,0 +1,2049 @@
+[
+  {
+    "patientName": "Ian Xin",
+    "trackingNumber": "1Z0K1J03A433959948",
+    "date": "2026-02-05",
+    "rxNumbers": [
+      "1196800",
+      "1196900",
+      "1197000"
+    ],
+    "_docId": "0LX5ZB4HBXWnOTVPO7ht"
+  },
+  {
+    "rxNumbers": [
+      "11090",
+      "11091"
+    ],
+    "date": "2025-10-16",
+    "trackingNumber": "1Z0K1J031335679240",
+    "patientName": "Melitza Burgos",
+    "_docId": "0NrbXkYGc9FyH9zxsuSP"
+  },
+  {
+    "trackingNumber": "1Z0K1J031313692294",
+    "patientName": "Tiffany Johnson",
+    "date": "2025-11-20",
+    "rxNumbers": [
+      "1116301"
+    ],
+    "_docId": "0mWyCbKEGuXeP2tlOSB0"
+  },
+  {
+    "patientName": "Jeannette Bayer",
+    "trackingNumber": "1Z0K1J031336359110",
+    "rxNumbers": [
+      "1176300",
+      "1176200"
+    ],
+    "date": "2026-01-08",
+    "_docId": "1CqPogCHJG748bOf8ech"
+  },
+  {
+    "trackingNumber": "1Z0K1J031309038713",
+    "patientName": "Brandon Leal",
+    "rxNumbers": [
+      "11411"
+    ],
+    "date": "2025-11-20",
+    "_docId": "1DY4Hx4eF8Xe69jQLquz"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A423982539",
+    "patientName": "Rehman Panhwer",
+    "rxNumbers": [
+      "1196500",
+      "1196400",
+      "1196600",
+      "1196700"
+    ],
+    "date": "2026-02-05",
+    "_docId": "1rqMQh04h5u8IwnxbOpY"
+  },
+  {
+    "date": "2025-10-15",
+    "rxNumbers": [
+      "10919"
+    ],
+    "trackingNumber": "1Z0K1J030222138619",
+    "patientName": "Robert Schmidt",
+    "_docId": "20RWplt2FSELaz75b6A1"
+  },
+  {
+    "patientName": "Donald Phipps",
+    "trackingNumber": "1Z0K1J031306209632",
+    "rxNumbers": [
+      "10957"
+    ],
+    "date": "2025-10-02",
+    "_docId": "2D49t1FvNHDN2XfzZFAC"
+  },
+  {
+    "rxNumbers": [
+      "1162800",
+      "1162600",
+      "1162500",
+      "1162700"
+    ],
+    "date": "2025-12-18",
+    "patientName": "James Ware",
+    "trackingNumber": "1Z0K1J031331702060",
+    "_docId": "2JWSsDVtiSpzrt4VTg6E"
+  },
+  {
+    "rxNumbers": [
+      "1193800",
+      "1193700"
+    ],
+    "date": "2026-02-04",
+    "trackingNumber": "1Z0K1J03A233287310",
+    "patientName": "Belinda Manning",
+    "_docId": "2jGbcjtSJCW8lceQzhwD"
+  },
+  {
+    "date": "2025-10-02",
+    "rxNumbers": [
+      "10955",
+      "10954",
+      "10956"
+    ],
+    "patientName": "Priscilla Wheeler",
+    "trackingNumber": "1Z0K1J032912117422",
+    "_docId": "2kwyXlSiJXIHgXkv5JA1"
+  },
+  {
+    "rxNumbers": [
+      "10810",
+      "10809"
+    ],
+    "date": "2025-09-17",
+    "patientName": "Evelyn Cooper",
+    "trackingNumber": "1Z0K1J031306661536",
+    "_docId": "3UMczKHXQMM1IxwAEqrI"
+  },
+  {
+    "rxNumbers": [
+      "11169",
+      "11168",
+      "11167"
+    ],
+    "date": "2025-10-23",
+    "patientName": "Rehman Panwer",
+    "trackingNumber": "1Z0K1J032927829724",
+    "_docId": "3ioqOCNfHCflWiwFTItE"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A429684690",
+    "patientName": "Elmer Arboleda Rodriguez",
+    "date": "2025-12-18",
+    "rxNumbers": [
+      "1142401",
+      "1142300"
+    ],
+    "_docId": "3iySAoHLxvlvgowBCRA8"
+  },
+  {
+    "trackingNumber": "1Z0K1J031323684097",
+    "patientName": "Willibrod Ndikum",
+    "rxNumbers": [
+      "10958",
+      "10959"
+    ],
+    "date": "2025-10-02",
+    "_docId": "4HhcOVQDSXq9fS4uh80O"
+  },
+  {
+    "patientName": "Darnell Stonum",
+    "trackingNumber": "1Z0K1J03A438233481",
+    "rxNumbers": [
+      "1190300",
+      "1190200"
+    ],
+    "date": "2026-01-29",
+    "_docId": "4LlTrU5CitRmdPIS33fj"
+  },
+  {
+    "rxNumbers": [
+      "10560",
+      "10561",
+      "10562"
+    ],
+    "date": "2025-10-14",
+    "patientName": "Michele Campisi",
+    "trackingNumber": "1Z0K1J032911470471",
+    "_docId": "68JPS8MFnS5TkBJn5teM"
+  },
+  {
+    "rxNumbers": [
+      "10708",
+      "10707",
+      "10970"
+    ],
+    "date": "2025-10-02",
+    "patientName": "Herbert Drain",
+    "trackingNumber": "1Z0K1J032911367048",
+    "_docId": "783v05F5fWvNlBNzpL6b"
+  },
+  {
+    "patientName": "Tiffany Johnson",
+    "trackingNumber": "1Z0K1J031323008906",
+    "date": "2025-10-23",
+    "rxNumbers": [
+      "11163",
+      "11162"
+    ],
+    "_docId": "7KBHrE1BAPFdBbP4QdbI"
+  },
+  {
+    "date": "2025-09-25",
+    "rxNumbers": [
+      "10887"
+    ],
+    "trackingNumber": "1Z0K1J031305120587",
+    "patientName": "Keith Davidson",
+    "_docId": "7W1AcSZoCT9UzGQyP1Bm"
+  },
+  {
+    "trackingNumber": "1Z0K1J031301847443",
+    "patientName": "Evelyn Cooper",
+    "rxNumbers": [
+      "1159100",
+      "1159200"
+    ],
+    "date": "2025-12-17",
+    "_docId": "7WH3n9W0VN71TjzuAXL0"
+  },
+  {
+    "trackingNumber": "1Z0K1J030233344394",
+    "patientName": "Shonnie Moore",
+    "rxNumbers": [
+      "1051403",
+      "1051503"
+    ],
+    "date": "2025-11-04",
+    "_docId": "7bjMsMZBHqDK1RTqEebC"
+  },
+  {
+    "date": "2025-10-08",
+    "rxNumbers": [
+      "11002",
+      "11003",
+      "11004"
+    ],
+    "trackingNumber": "1Z0K1J032931037527",
+    "patientName": "Geremias Jimenez-Garcia",
+    "_docId": "87Useke7DFXxu4bx6c25"
+  },
+  {
+    "patientName": "Elmer Arboleda Rodriguez",
+    "trackingNumber": "1Z0K1J032906046949",
+    "rxNumbers": [
+      "10827",
+      "10828"
+    ],
+    "date": "2025-09-18",
+    "_docId": "8AVOuM5It0kef1NfGlAC"
+  },
+  {
+    "rxNumbers": [
+      "11016",
+      "11014",
+      "11015"
+    ],
+    "date": "2025-10-09",
+    "trackingNumber": "1Z0K1J031335597730",
+    "patientName": "Jesus Ruiz Maldonado",
+    "_docId": "8PNhyd2V1HmU4ZzCh2TO"
+  },
+  {
+    "patientName": "Jeannette Bayer",
+    "trackingNumber": "1Z0K1J031335774655",
+    "rxNumbers": [
+      "1220000",
+      "1220100"
+    ],
+    "date": "2026-03-05",
+    "_docId": "8tA9SH4dU2lFAC6N8DmR"
+  },
+  {
+    "date": "2025-11-13",
+    "rxNumbers": [
+      "11355"
+    ],
+    "trackingNumber": "1Z0K1J031313381665",
+    "patientName": "Michael Buck",
+    "_docId": "9UjnN6IzEEDIktOuvapk"
+  },
+  {
+    "date": "2025-11-13",
+    "rxNumbers": [
+      "11357",
+      "11356"
+    ],
+    "patientName": "Nathalia Balderas",
+    "trackingNumber": "1Z0K1J031312837853",
+    "_docId": "9ikevHr8pC2YeQaNlMOq"
+  },
+  {
+    "trackingNumber": "1Z0K1J032923604296",
+    "patientName": "Elmer Arboleda Rodriguez",
+    "rxNumbers": [
+      "11173",
+      "11174"
+    ],
+    "date": "2025-10-23",
+    "_docId": "9lnDDVQdniLX7eg2C0xL"
+  },
+  {
+    "date": "2025-10-01",
+    "rxNumbers": [
+      "10900"
+    ],
+    "trackingNumber": "1Z0K1J031326557460",
+    "patientName": "Nathalia Balderas",
+    "_docId": "9rD1O6Jl5t6e4W3ZZoEc"
+  },
+  {
+    "rxNumbers": [
+      "11131",
+      "11132"
+    ],
+    "date": "2025-10-21",
+    "patientName": "Michael Reyes",
+    "trackingNumber": "1Z0K1J031320325668",
+    "_docId": "AnI68bFIY51XdXAewIzt"
+  },
+  {
+    "date": "2025-11-20",
+    "rxNumbers": [
+      "11424"
+    ],
+    "trackingNumber": "1Z0K1J031313685720",
+    "patientName": "Elmer Arboleda Rodriguez",
+    "_docId": "ApZqGxjvqTlzgBo9PAfQ"
+  },
+  {
+    "rxNumbers": [
+      "1175500",
+      "1175400",
+      "1175300redeliver"
+    ],
+    "date": "2026-01-21",
+    "patientName": "Denzel Cantarero",
+    "trackingNumber": "1Z0K1J032929910220",
+    "_docId": "BB128Mvcs6gZsWs5f9SG"
+  },
+  {
+    "patientName": "Ndeyonwrey Lawrina Gaye",
+    "trackingNumber": "1Z0K1J031305256780",
+    "date": "2025-10-30",
+    "rxNumbers": [
+      "11235",
+      "11234"
+    ],
+    "_docId": "BCSRoSA5OIiAoEcVj5M3"
+  },
+  {
+    "date": "2025-11-06",
+    "rxNumbers": [
+      "11288",
+      "11276",
+      "11278"
+    ],
+    "trackingNumber": "1Z0K1J031322842033",
+    "patientName": "Monica Ann Torres",
+    "_docId": "BOVZ6s9TvnZ3GBdYYacF"
+  },
+  {
+    "rxNumbers": [
+      "11426",
+      "11425",
+      "11427"
+    ],
+    "date": "2025-11-20",
+    "patientName": "Theresa Sanchez",
+    "trackingNumber": "1Z0K1J032935877961",
+    "_docId": "BijR8bzzAaHBzlwtEgy3"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A435918023",
+    "patientName": "Joshua Thompson",
+    "rxNumbers": [
+      "1129201",
+      "1097802",
+      "1098102",
+      "1150900"
+    ],
+    "date": "2025-12-09",
+    "_docId": "BshFLiJ7qry433LlzpYX"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A402678069",
+    "patientName": "Victoria Cruz",
+    "date": "2026-02-19",
+    "rxNumbers": [
+      "1182201"
+    ],
+    "_docId": "Cbm3wkdMoOxoR0DRKcVg"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A433313608",
+    "patientName": "Darnell Stonum",
+    "date": "2026-02-26",
+    "rxNumbers": [
+      "1214000",
+      "1214000"
+    ],
+    "_docId": "CjIbUHBwFJK4IxmQGZSU"
+  },
+  {
+    "patientName": "Ricky Brown",
+    "trackingNumber": "1Z0K1J032936570638",
+    "rxNumbers": [
+      "1218400"
+    ],
+    "date": "2026-03-05",
+    "_docId": "Cw4tRRBfMLrd2OycgGL8"
+  },
+  {
+    "rxNumbers": [
+      "1190400",
+      "1190600",
+      "1190500",
+      "1190700"
+    ],
+    "date": "2026-01-29",
+    "trackingNumber": "1Z0K1J03A426983274",
+    "patientName": "Ami Siarski",
+    "_docId": "DCHZafCqE9cCpGf1JkuF"
+  },
+  {
+    "rxNumbers": [
+      "1210600",
+      "1210500",
+      "1210400"
+    ],
+    "date": "2026-02-19",
+    "trackingNumber": "1Z0K1J03A404047077",
+    "patientName": "Markeyta Johnson",
+    "_docId": "Do8gYcJgWUZbLESv4LGa"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A417606331",
+    "patientName": "Priscilla Wheeler",
+    "date": "2026-03-05",
+    "rxNumbers": [
+      "1218900",
+      "1218800",
+      "1218900"
+    ],
+    "_docId": "E5pAnkLpvlxtFYoERcj1"
+  },
+  {
+    "trackingNumber": "1Z0K1J031331159443",
+    "patientName": "Prinisha Richard",
+    "date": "2025-11-06",
+    "rxNumbers": [
+      "11286",
+      "11287"
+    ],
+    "_docId": "F2bRzjf78vCQGnG4cFfN"
+  },
+  {
+    "trackingNumber": "1Z0K1J031308773966",
+    "patientName": "Tiffany Johnson",
+    "rxNumbers": [
+      "1187800",
+      "1187900",
+      "1188000"
+    ],
+    "date": "2026-01-22",
+    "_docId": "F35t0TVQm3PhsRXk6sCg"
+  },
+  {
+    "trackingNumber": "1Z0K1J031331501929",
+    "patientName": "Roderick Ross",
+    "rxNumbers": [
+      "11410"
+    ],
+    "date": "2025-11-20",
+    "_docId": "F8MipeJg9hSNwRQFN9sl"
+  },
+  {
+    "patientName": "Joshua Thompson",
+    "trackingNumber": "1Z0K1J031330090572",
+    "rxNumbers": [
+      "10978",
+      "10979",
+      "10980",
+      "10981"
+    ],
+    "date": "2025-10-14",
+    "_docId": "Fj2Xjw4YpYsxRXjlcT1H"
+  },
+  {
+    "patientName": "Darnell Stonum",
+    "trackingNumber": "1Z0K1J032900785205",
+    "rxNumbers": [
+      "1190300",
+      "1190200redeliver"
+    ],
+    "date": "2026-02-05",
+    "_docId": "G2oL58NNYK2qS97D0MZ5"
+  },
+  {
+    "date": "2025-10-21",
+    "rxNumbers": [
+      "11118"
+    ],
+    "trackingNumber": "1Z0K1J031320486673",
+    "patientName": "Michael Buck",
+    "_docId": "GVrwnnnzidLkL1rZp3J3"
+  },
+  {
+    "trackingNumber": "1Z0K1J033522458373",
+    "patientName": "Michele Campisi",
+    "rxNumbers": [
+      "10561",
+      "10560",
+      "10562"
+    ],
+    "date": "2025-09-17",
+    "_docId": "GWgVe0aa6TqT4TnRMwSu"
+  },
+  {
+    "patientName": "Herbert Drain",
+    "trackingNumber": "1Z0K1J032916334029",
+    "rxNumbers": [
+      "1176101"
+    ],
+    "date": "2026-02-12",
+    "_docId": "GclUvKrihTmPQM35eSyU"
+  },
+  {
+    "patientName": "Roderick Ross",
+    "trackingNumber": "1Z0K1J032923997854",
+    "date": "2025-10-16",
+    "rxNumbers": [
+      "11084",
+      "11085",
+      "11086"
+    ],
+    "_docId": "HUdZmGtIRV69vaJHTd1Z"
+  },
+  {
+    "rxNumbers": [
+      "10832",
+      "10833"
+    ],
+    "date": "2025-09-18",
+    "trackingNumber": "1Z0K1J031311681559",
+    "patientName": "Elibaldo Flores",
+    "_docId": "HdffuQ8xmkluAN1p9veb"
+  },
+  {
+    "rxNumbers": [
+      "1214000",
+      "1213900"
+    ],
+    "date": "2026-02-26",
+    "patientName": "Ami Siarski",
+    "trackingNumber": "1Z0K1J031313372693",
+    "_docId": "HwQDUbMM7FMgVmYR1T2J"
+  },
+  {
+    "patientName": "Delmy Granados",
+    "trackingNumber": "1Z0K1J03A439310458",
+    "rxNumbers": [
+      "1187200",
+      "1187300",
+      "1187400"
+    ],
+    "date": "2026-01-22",
+    "_docId": "I2zOXTBD85iaFJ5bqG0q"
+  },
+  {
+    "trackingNumber": "1Z0K1J032905053460",
+    "patientName": "Cheri Green",
+    "rxNumbers": [
+      "10966",
+      "10964",
+      "10965",
+      "10967"
+    ],
+    "date": "2025-10-07",
+    "_docId": "IWgAd28b5dJzEzjK8I5h"
+  },
+  {
+    "date": "2026-01-15",
+    "rxNumbers": [
+      "1183000",
+      "1183100"
+    ],
+    "patientName": "Charlene Purvis-Driggs",
+    "trackingNumber": "1Z0K1J031338267171",
+    "_docId": "IcMeR7UI793f8wo9bwbd"
+  },
+  {
+    "trackingNumber": "1Z0K1J032925896781",
+    "patientName": "Ami Siarski",
+    "rxNumbers": [
+      "11022"
+    ],
+    "date": "2025-10-14",
+    "_docId": "IskgnSD3Ln0X107ME8dw"
+  },
+  {
+    "date": "2025-10-30",
+    "rxNumbers": [
+      "11236"
+    ],
+    "trackingNumber": "1Z0K1J031316072190",
+    "patientName": "Robert Schmidt",
+    "_docId": "J0bFKOJwfBRb2kKLOVhK"
+  },
+  {
+    "rxNumbers": [
+      "1170101",
+      "1170201",
+      "1170301"
+    ],
+    "date": "2026-02-03",
+    "patientName": "Joshua Thompson",
+    "trackingNumber": "1Z0K1J032933081501",
+    "_docId": "J1hVd8fX3o9qeP8KwEjh"
+  },
+  {
+    "trackingNumber": "1Z0K1J030234189766",
+    "patientName": "Michele Summers",
+    "rxNumbers": [
+      "11188-Balance"
+    ],
+    "date": "2025-10-29",
+    "_docId": "Ju3nJgp4gJPg55SBWHUC"
+  },
+  {
+    "date": "2025-10-21",
+    "rxNumbers": [
+      "11135"
+    ],
+    "trackingNumber": "1Z0K1J031337584884",
+    "patientName": "Shonnie Moore",
+    "_docId": "JvTwx1Xiuy7rOIxiyvNe"
+  },
+  {
+    "rxNumbers": [
+      "1175500",
+      "1175400",
+      "1175300"
+    ],
+    "date": "2026-01-08",
+    "trackingNumber": "1Z0K1J03A401750133",
+    "patientName": "Denzel Cantarero",
+    "_docId": "KbgWatw1sz6HUww1j7vW"
+  },
+  {
+    "patientName": "Hernando Bustos",
+    "trackingNumber": "1Z0K1J03A419472982",
+    "date": "2025-12-04",
+    "rxNumbers": [
+      "1150300"
+    ],
+    "_docId": "KcQPP5cpyYu123SQlb3v"
+  },
+  {
+    "trackingNumber": "1Z0K1J030201607142",
+    "patientName": "Shonnie Moore",
+    "rxNumbers": [
+      "11135-balance"
+    ],
+    "date": "2025-10-28",
+    "_docId": "KtgRoQU5961Li3hKTVa7"
+  },
+  {
+    "patientName": "Brandon Leal",
+    "trackingNumber": "1Z0K1J03A419526254",
+    "date": "2026-02-19",
+    "rxNumbers": [
+      "1208600",
+      "1208500"
+    ],
+    "_docId": "LEXOrtr5QWTaQkBDHkoA"
+  },
+  {
+    "patientName": "Willibrod Ndikum",
+    "trackingNumber": "1Z0K1J031330761589",
+    "date": "2026-02-19",
+    "rxNumbers": [
+      "1208700",
+      "1208800"
+    ],
+    "_docId": "LIhvrY6fz2msRDjg64Ri"
+  },
+  {
+    "patientName": "Carlos Garcia",
+    "trackingNumber": "1Z0K1J030204736800",
+    "date": "2025-11-04",
+    "rxNumbers": [
+      "10971",
+      "10972"
+    ],
+    "_docId": "LKlpC7Ncv66ifendTmQR"
+  },
+  {
+    "rxNumbers": [
+      "1204300",
+      "1204200"
+    ],
+    "date": "2026-02-12",
+    "patientName": "Thomas Degeoso",
+    "trackingNumber": "1Z0K1J032915011012",
+    "_docId": "LLYkmodWwY5iHbiKhdAz"
+  },
+  {
+    "trackingNumber": "1Z0K1J032914302165",
+    "patientName": "Herbert Drain",
+    "rxNumbers": [
+      "1218500",
+      "1218700",
+      "1218600"
+    ],
+    "date": "2026-03-10",
+    "_docId": "LOlcWDXLTlPu8oSpl0uy"
+  },
+  {
+    "patientName": "Dennis Messerly",
+    "trackingNumber": "1Z0K1J030103874156",
+    "rxNumbers": [
+      "1178600",
+      "1178700"
+    ],
+    "date": "2026-01-14",
+    "_docId": "LY9sJqE6RhRTNvKd9hSt"
+  },
+  {
+    "patientName": "Brien Holley",
+    "trackingNumber": "1Z0K1J030125503998",
+    "date": "2025-09-18",
+    "rxNumbers": [
+      "10803",
+      "10804",
+      "10805"
+    ],
+    "_docId": "Lb4C1pXhGQgse5uOLvGz"
+  },
+  {
+    "rxNumbers": [
+      "11338",
+      "11339"
+    ],
+    "date": "2025-11-13",
+    "trackingNumber": "1Z0K1J031300767246",
+    "patientName": "Keith Davidson",
+    "_docId": "LeCUIwEhrJnLo2BISdlY"
+  },
+  {
+    "patientName": "Alfredo Morales",
+    "trackingNumber": "1Z0K1J032922679548",
+    "rxNumbers": [
+      "11428"
+    ],
+    "date": "2025-11-20",
+    "_docId": "LnmfPQPf0tkKzqbXs5iQ"
+  },
+  {
+    "date": "2026-02-26",
+    "rxNumbers": [
+      "1213100",
+      "1213000"
+    ],
+    "patientName": "Ramsford Grero",
+    "trackingNumber": "1Z0K1J03A409697286",
+    "_docId": "MNyCqMTgC9Fw0sI18dOD"
+  },
+  {
+    "trackingNumber": "1Z0K1J031313154615",
+    "patientName": "Christopher Eastwood",
+    "rxNumbers": [
+      "11269",
+      "11270"
+    ],
+    "date": "2025-11-06",
+    "_docId": "MYpzDeyxmd529Wu4KNWy"
+  },
+  {
+    "trackingNumber": "1Z0K1J031334973932",
+    "patientName": "Jorge Cazares",
+    "rxNumbers": [
+      "11170",
+      "11172",
+      "11171"
+    ],
+    "date": "2025-10-23",
+    "_docId": "NZ0ifzY49HTP8Xy9DRPx"
+  },
+  {
+    "patientName": "Andre Drumgoole",
+    "trackingNumber": "1Z0K1J032916418233",
+    "rxNumbers": [
+      "1204600",
+      "1204800",
+      "1204700",
+      "1204500"
+    ],
+    "date": "2026-02-12",
+    "_docId": "Ny1gy2ZKImngjVuHpp6L"
+  },
+  {
+    "rxNumbers": [
+      "1155400",
+      "1155500",
+      "1155600"
+    ],
+    "date": "2025-12-11",
+    "patientName": "Denzel Cantarero",
+    "trackingNumber": "1Z0K1J03A434938236",
+    "_docId": "OMqiysn6C3LujKBvUH9c"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A227166337",
+    "patientName": "Gregory Cowart",
+    "date": "2026-01-08",
+    "rxNumbers": [
+      "1175800",
+      "1175900",
+      "1175700"
+    ],
+    "_docId": "PSZ9hGyv4zx3J1t61ZwP"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A414529957",
+    "patientName": "Delmy Granados",
+    "rxNumbers": [
+      "1141400",
+      "1141300",
+      "1141200",
+      "Redeliver"
+    ],
+    "date": "2025-12-03",
+    "_docId": "PpdxRmr44UfWK9NeyML5"
+  },
+  {
+    "rxNumbers": [
+      "10821"
+    ],
+    "date": "2025-09-24",
+    "trackingNumber": "1Z0K1J030209794373",
+    "patientName": "Jiles Smith",
+    "_docId": "QvZJeBlyVObvIefBw68Q"
+  },
+  {
+    "patientName": "Shonnie Moore",
+    "trackingNumber": "1Z0K1J030225994975",
+    "date": "2025-12-02",
+    "rxNumbers": [
+      "1051404",
+      "1051504",
+      "1051303"
+    ],
+    "_docId": "QyI8fYu6B73T9ndCxZoY"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A433310263",
+    "patientName": "Brandon Leal",
+    "rxNumbers": [
+      "1187500",
+      "1187700",
+      "1187600"
+    ],
+    "date": "2026-01-22",
+    "_docId": "RBFwFicJz1p9rAwVqVbo"
+  },
+  {
+    "rxNumbers": [
+      "1141801",
+      "1141901"
+    ],
+    "date": "2025-12-18",
+    "patientName": "Jorge Cazares",
+    "trackingNumber": "1Z0K1J03A419374874",
+    "_docId": "RIg1mwpANrPdP56lI994"
+  },
+  {
+    "trackingNumber": "1Z0K1J031313469366",
+    "patientName": "Joshua Hennes",
+    "date": "2025-09-18",
+    "rxNumbers": [
+      "10830"
+    ],
+    "_docId": "RUCIeENuSrhslrBv3I6m"
+  },
+  {
+    "trackingNumber": "1Z0K1J032904024707",
+    "patientName": "Nathalia Balderas",
+    "date": "2025-10-16",
+    "rxNumbers": [
+      "11110",
+      "11108",
+      "11109"
+    ],
+    "_docId": "RcG338Vln6RivNnVh24A"
+  },
+  {
+    "patientName": "Joshua Thompson",
+    "trackingNumber": "1Z0K1J033532731414",
+    "rxNumbers": [
+      "1170102",
+      "1170302",
+      "1170202"
+    ],
+    "date": "2026-03-03",
+    "_docId": "S7zyz8hei1X46YdFIAHR"
+  },
+  {
+    "patientName": "Zara Sanchez",
+    "trackingNumber": "1Z0K1J03A422846161",
+    "rxNumbers": [
+      "1183500",
+      "1183400",
+      "1183300"
+    ],
+    "date": "2026-01-15",
+    "_docId": "SU4oQxBE2ry32ss5IeRU"
+  },
+  {
+    "patientName": "Ramsford Grero",
+    "trackingNumber": "1Z0K1J03A419769180",
+    "rxNumbers": [
+      "1189900",
+      "1189800"
+    ],
+    "date": "2026-01-29",
+    "_docId": "Sg9C5yCou8GZyAE97qLr"
+  },
+  {
+    "date": "2026-03-03",
+    "rxNumbers": [
+      "1191301",
+      "1191401",
+      "1191201"
+    ],
+    "patientName": "Michelle Campisi",
+    "trackingNumber": "1Z0K1J033530782426",
+    "_docId": "Sjp0GDyShEVjKgqadguu"
+  },
+  {
+    "date": "2026-03-12",
+    "rxNumbers": [
+      "1225800"
+    ],
+    "patientName": "Tonsia Brown",
+    "trackingNumber": "1Z0K1J032928198468",
+    "_docId": "SkIOtPzIbkGCYqOgzXhz"
+  },
+  {
+    "trackingNumber": "1Z0K1J031316232392",
+    "patientName": "Neketha Tennell-Watson",
+    "rxNumbers": [
+      "1145200-balance"
+    ],
+    "date": "2025-12-04",
+    "_docId": "SliXd280PHXtYz7sOYCk"
+  },
+  {
+    "date": "2025-09-16",
+    "rxNumbers": [
+      "10780",
+      "10779",
+      "10800"
+    ],
+    "patientName": "Ian Xin",
+    "trackingNumber": "1Z0K1J031307822315",
+    "_docId": "T4xVZdrMchaZ05G9b2Kw"
+  },
+  {
+    "date": "2025-11-06",
+    "rxNumbers": [
+      "11281",
+      "11280",
+      "11279"
+    ],
+    "patientName": "Brandon Leal",
+    "trackingNumber": "1Z0K1J031331373863",
+    "_docId": "TFgWN9CRE7q3UuUVrnxj"
+  },
+  {
+    "date": "2026-01-08",
+    "rxNumbers": [
+      "1175600"
+    ],
+    "patientName": "Willibrod Ndikum",
+    "trackingNumber": "1Z0K1J031305966914",
+    "_docId": "TNqxn46t6UHjTzTCllek"
+  },
+  {
+    "date": "2025-10-01",
+    "rxNumbers": [
+      "10949"
+    ],
+    "trackingNumber": "1Z0K1J031306546410",
+    "patientName": "Gloria Winkfield",
+    "_docId": "ToisFDgehlFqylmVoQYz"
+  },
+  {
+    "date": "2025-10-28",
+    "rxNumbers": [
+      "10957"
+    ],
+    "trackingNumber": "1Z0K1J031330159347",
+    "patientName": "Donald Phipps",
+    "_docId": "U4gjgFTWJ7cPTEEeMbXA"
+  },
+  {
+    "patientName": "Jane Deardorff",
+    "trackingNumber": "1Z0K1J032930279045",
+    "rxNumbers": [
+      "10599"
+    ],
+    "date": "2025-09-30",
+    "_docId": "U5hjsqkxtK3AoBZNVE8s"
+  },
+  {
+    "patientName": "Pendoria Williams",
+    "trackingNumber": "1Z0K1J031330253655",
+    "date": "2025-10-01",
+    "rxNumbers": [
+      "10932"
+    ],
+    "_docId": "UFMDeXfW4woNmgeNIY1M"
+  },
+  {
+    "patientName": "Kristie Stockton",
+    "trackingNumber": "1Z0K1J031307928685",
+    "rxNumbers": [
+      "11040",
+      "11037",
+      "11041"
+    ],
+    "date": "2025-10-14",
+    "_docId": "ULEnUESjbpwWcYdW2yDk"
+  },
+  {
+    "trackingNumber": "1Z0K1J031336089635",
+    "patientName": "Fidel Sanchez",
+    "date": "2025-09-25",
+    "rxNumbers": [
+      "10903",
+      "10904"
+    ],
+    "_docId": "V62XlGF1ZrhLwtllAdAk"
+  },
+  {
+    "date": "2026-01-22",
+    "rxNumbers": [
+      "1186500",
+      "1186600",
+      "1186700"
+    ],
+    "patientName": "Jorge Cazares",
+    "trackingNumber": "1Z0K1J03A435514432",
+    "_docId": "VCUMVqK70djoRChSHIIw"
+  },
+  {
+    "rxNumbers": [
+      "11099",
+      "11100",
+      "11101",
+      "11102",
+      "11103"
+    ],
+    "date": "2025-10-16",
+    "trackingNumber": "1Z0K1J032920573629",
+    "patientName": "Gerson Morales",
+    "_docId": "VmmPLLYBJ0vJPP5w6z3H"
+  },
+  {
+    "trackingNumber": "1Z0K1J032916768909",
+    "patientName": "Delmy Granados",
+    "date": "2025-11-20",
+    "rxNumbers": [
+      "11414",
+      "11412",
+      "11413"
+    ],
+    "_docId": "W4sVwdLWwRdAjfP65jgN"
+  },
+  {
+    "date": "2026-02-19",
+    "rxNumbers": [
+      "1208900",
+      "1209100",
+      "1209200",
+      "1209000"
+    ],
+    "patientName": "James Ware",
+    "trackingNumber": "1Z0K1J031329419372",
+    "_docId": "Wa72dZNA35gMjcyOzuUR"
+  },
+  {
+    "trackingNumber": "1Z0K1J031320602779",
+    "patientName": "Delvin Williams",
+    "rxNumbers": [
+      "11237"
+    ],
+    "date": "2025-10-30",
+    "_docId": "X4rxHlNXOB77bIPN8jkl"
+  },
+  {
+    "trackingNumber": "1Z0K1J031301104889",
+    "patientName": "Zara Sanchez",
+    "rxNumbers": [
+      "11366",
+      "11365"
+    ],
+    "date": "2025-11-18",
+    "_docId": "X7wuhroow56NdB6jWRMe"
+  },
+  {
+    "rxNumbers": [
+      "1182700",
+      "1182600"
+    ],
+    "date": "2026-01-15",
+    "trackingNumber": "1Z0K1J03A429163216",
+    "patientName": "Thomas Degeoso",
+    "_docId": "XQQhrePSoOnghQn8CWw2"
+  },
+  {
+    "patientName": "Tonya Culliton",
+    "trackingNumber": "1Z0K1J031306607649",
+    "date": "2026-02-19",
+    "rxNumbers": [
+      "1209300",
+      "1209400"
+    ],
+    "_docId": "XwRgctzE4hZXY5teJLW6"
+  },
+  {
+    "rxNumbers": [
+      "11246",
+      "11245",
+      "11247"
+    ],
+    "date": "2025-11-13",
+    "trackingNumber": "1Z0K1J032928710911",
+    "patientName": "Gerardo Garcia",
+    "_docId": "YNlAqYHLCgXb8pysWG3F"
+  },
+  {
+    "rxNumbers": [
+      "11087",
+      "11088",
+      "11089"
+    ],
+    "date": "2025-10-16",
+    "trackingNumber": "1Z0K1J031319372093",
+    "patientName": "Elibaldo Flores",
+    "_docId": "Yal4cyKMIVAlYT3GMWCU"
+  },
+  {
+    "trackingNumber": "1Z0K1J032910563177",
+    "patientName": "Jodi Rebel",
+    "rxNumbers": [
+      "1224800",
+      "1224900"
+    ],
+    "date": "2026-03-11",
+    "_docId": "Z3aJ8vyhPJYjGLpYkb8Q"
+  },
+  {
+    "patientName": "Monica Ann Torres",
+    "trackingNumber": "1Z0K1J032919591997",
+    "date": "2025-09-25",
+    "rxNumbers": [
+      "10889"
+    ],
+    "_docId": "ZUr9jPbF2wMNLWThakF4"
+  },
+  {
+    "trackingNumber": "1Z0K1J030214498353",
+    "patientName": "Hyacinth Brown",
+    "rxNumbers": [
+      "1173901"
+    ],
+    "date": "2026-03-10",
+    "_docId": "Zefny2wWWo7HTqlDk04y"
+  },
+  {
+    "patientName": "Candace Jackson",
+    "trackingNumber": "1Z0K1J03A404121003",
+    "rxNumbers": [
+      "1155900",
+      "1155700",
+      "1155800"
+    ],
+    "date": "2025-12-11",
+    "_docId": "aYZWuBxLYdmhRQixJrKS"
+  },
+  {
+    "patientName": "Margaret Merritt",
+    "trackingNumber": "1Z0K1J031324249958",
+    "rxNumbers": [
+      "11193"
+    ],
+    "date": "2025-10-28",
+    "_docId": "acV44Joz7sBR3gOJ8Wiv"
+  },
+  {
+    "patientName": "Beverly Jones",
+    "trackingNumber": "1Z0K1J034227690410",
+    "rxNumbers": [
+      "10893",
+      "10892",
+      "10891",
+      "10890"
+    ],
+    "date": "2025-09-25",
+    "_docId": "afR6HM2QVuaD2A3J0WJW"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A432384598",
+    "patientName": "Prinisha Richard",
+    "rxNumbers": [
+      "1149900",
+      "1149800"
+    ],
+    "date": "2025-12-04",
+    "_docId": "b7iOxc001M8z0EPa4n3R"
+  },
+  {
+    "date": "2025-10-30",
+    "rxNumbers": [
+      "11240",
+      "11239",
+      "11238"
+    ],
+    "patientName": "Delmy Granados",
+    "trackingNumber": "1Z0K1J032937392981",
+    "_docId": "bBHj0UDYVFtb67igNTRw"
+  },
+  {
+    "patientName": "Melitza Burgos",
+    "trackingNumber": "1Z0K1J031329321084",
+    "rxNumbers": [
+      "11346",
+      "11347",
+      "11345",
+      "11348"
+    ],
+    "date": "2025-11-13",
+    "_docId": "bXBRtyhdptizFmjSoQZx"
+  },
+  {
+    "trackingNumber": "1Z0K1J031328384198",
+    "patientName": "Ronnie Davis",
+    "date": "2025-10-14",
+    "rxNumbers": [
+      "10789",
+      "10790"
+    ],
+    "_docId": "bcOtudiPx0Gt0duBtebL"
+  },
+  {
+    "patientName": "Rhonda Williams",
+    "trackingNumber": "1Z0K1J032915592798",
+    "rxNumbers": [
+      "1225400"
+    ],
+    "date": "2026-03-12",
+    "_docId": "calkeBjlfWR22acqfnT5"
+  },
+  {
+    "rxNumbers": [
+      "1148100"
+    ],
+    "date": "2025-12-03",
+    "patientName": "Zara Sanchez",
+    "trackingNumber": "1Z0K1J031318125763",
+    "_docId": "cbMBTS5lKFKjx3ws2CyD"
+  },
+  {
+    "date": "2026-02-12",
+    "rxNumbers": [
+      "1204400"
+    ],
+    "patientName": "Jodi Rebel",
+    "trackingNumber": "1Z0K1J032927094367",
+    "_docId": "ce4FxFSkvdaont58rKVh"
+  },
+  {
+    "date": "2026-02-05",
+    "rxNumbers": [
+      "1197100",
+      "1197200",
+      "1197300"
+    ],
+    "trackingNumber": "1Z0K1J033512072594",
+    "patientName": "Denzel Cantarero",
+    "_docId": "d0EzBClubiNBgG11nW77"
+  },
+  {
+    "trackingNumber": "1Z0K1J031315413653",
+    "patientName": "Zara Sanchez",
+    "rxNumbers": [
+      "10968",
+      "10969"
+    ],
+    "date": "2025-10-07",
+    "_docId": "e88RDARUeNKsOLnIJrwr"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A433279745",
+    "patientName": "Prisciila Wheeler",
+    "date": "2026-01-08",
+    "rxNumbers": [
+      "1174800",
+      "1174600",
+      "1174700"
+    ],
+    "_docId": "eSSqForIowuM5a4Z4gIQ"
+  },
+  {
+    "trackingNumber": "1Z0K1J032929575478",
+    "patientName": "Ricky Brown",
+    "rxNumbers": [
+      "1218400resend"
+    ],
+    "date": "2026-03-12",
+    "_docId": "eSSv9mQCe0uVHuOgu5Vx"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A437504798",
+    "patientName": "Hernando Bustos",
+    "date": "2026-01-15",
+    "rxNumbers": [
+      "1183200"
+    ],
+    "_docId": "eZMJLPG2qJIyDtWdlmSO"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A420704997",
+    "patientName": "Nicholas Estrada",
+    "rxNumbers": [
+      "1213400",
+      "1213200",
+      "1213300"
+    ],
+    "date": "2026-02-26",
+    "_docId": "ejk99sIf8ugK8DDKk8kW"
+  },
+  {
+    "trackingNumber": "1Z0K1J030138080046",
+    "patientName": "Gregory Cowart",
+    "date": "2026-03-05",
+    "rxNumbers": [
+      "1219600",
+      "1219500",
+      "1219700"
+    ],
+    "_docId": "en9F4FujnlQSOMDM05gX"
+  },
+  {
+    "trackingNumber": "1Z0K1J031301650977",
+    "patientName": "Travis Dippel",
+    "rxNumbers": [
+      "1187100"
+    ],
+    "date": "2026-01-22",
+    "_docId": "epHUXxyjMR0bQvQmHzq0"
+  },
+  {
+    "trackingNumber": "1Z0K1J032923719145",
+    "patientName": "Pray Reh",
+    "rxNumbers": [
+      "11012",
+      "11013"
+    ],
+    "date": "2025-10-09",
+    "_docId": "eq5kuEcSUx6Rcvxpep4W"
+  },
+  {
+    "patientName": "Joshua Thompson",
+    "trackingNumber": "1Z0K1J033534438872",
+    "rxNumbers": [
+      "1097801",
+      "1098101",
+      "1097901",
+      "1129200"
+    ],
+    "date": "2025-11-11",
+    "_docId": "fD0utctGu8rwEjGgwykD"
+  },
+  {
+    "date": "2026-01-15",
+    "rxNumbers": [
+      "1182800",
+      "1182900"
+    ],
+    "patientName": "Christopher Eastwood",
+    "trackingNumber": "1Z0K1J03A437825389",
+    "_docId": "fOVHMxScmr0AnULyy9Lv"
+  },
+  {
+    "date": "2025-09-16",
+    "rxNumbers": [
+      "10783",
+      "10784",
+      "10782",
+      "Wrongaddress"
+    ],
+    "trackingNumber": "1Z0K1J031328761557",
+    "patientName": "Bryan Mcgee",
+    "_docId": "fWB67IQd3qZs8NckNCJO"
+  },
+  {
+    "rxNumbers": [
+      "1171100",
+      "1171000"
+    ],
+    "date": "2026-01-08",
+    "trackingNumber": "1Z0K1J03A410793106",
+    "patientName": "George Oropeza",
+    "_docId": "fxCMBC7FLURdwNdoT4DE"
+  },
+  {
+    "patientName": "Rehman Panhwer",
+    "trackingNumber": "1Z0K1J032931514154",
+    "rxNumbers": [
+      "11422",
+      "11420",
+      "11421"
+    ],
+    "date": "2025-11-20",
+    "_docId": "gF2kGV5eJri6zKCaXjrC"
+  },
+  {
+    "patientName": "Stacey Downs",
+    "trackingNumber": "1Z0K1J031315973932",
+    "date": "2025-11-20",
+    "rxNumbers": [
+      "11415"
+    ],
+    "_docId": "gN9oAinRMtMTqoNkyhbs"
+  },
+  {
+    "rxNumbers": [
+      "11166",
+      "11164",
+      "11165"
+    ],
+    "date": "2025-10-23",
+    "trackingNumber": "1Z0K1J031338342713",
+    "patientName": "Ian Xin",
+    "_docId": "hUAFXO8gHpzqdBttUlBP"
+  },
+  {
+    "date": "2025-12-04",
+    "rxNumbers": [
+      "1101301",
+      "1101201"
+    ],
+    "patientName": "Pray Reh",
+    "trackingNumber": "1Z0K1J031333905203",
+    "_docId": "hgzzuJhAIoP3CsOGJu1l"
+  },
+  {
+    "date": "2025-11-06",
+    "rxNumbers": [
+      "11284",
+      "11282",
+      "11283"
+    ],
+    "trackingNumber": "1Z0K1J032916865830",
+    "patientName": "Herbert Drain",
+    "_docId": "iFmssW5LvoSzmh0f59K3"
+  },
+  {
+    "date": "2026-02-05",
+    "rxNumbers": [
+      "1197700",
+      "1197500",
+      "1197600"
+    ],
+    "trackingNumber": "1Z0K1J03A427486327",
+    "patientName": "William Ayala",
+    "_docId": "iQrCmyiEtM9674GPA8nR"
+  },
+  {
+    "patientName": "Beverly Jones",
+    "trackingNumber": "1Z0K1J030336805825",
+    "date": "2025-11-06",
+    "rxNumbers": [
+      "11267",
+      "11266",
+      "11268",
+      "11265"
+    ],
+    "_docId": "iqj5a38mECzYxVldmL4V"
+  },
+  {
+    "trackingNumber": "1Z0K1J031338328686",
+    "patientName": "Matthew Hunter",
+    "rxNumbers": [
+      "10961",
+      "10960"
+    ],
+    "date": "2025-10-02",
+    "_docId": "j4ya7f9Qu35UNogiSmA1"
+  },
+  {
+    "rxNumbers": [
+      "1175000",
+      "1174900"
+    ],
+    "date": "2026-01-08",
+    "patientName": "Ami Siarski",
+    "trackingNumber": "1Z0K1J031301997924",
+    "_docId": "j7y4dh1v4cPjZXnNbbPX"
+  },
+  {
+    "rxNumbers": [
+      "1203900",
+      "1204000",
+      "1204100"
+    ],
+    "date": "2026-02-12",
+    "patientName": "Candace Jackson",
+    "trackingNumber": "1Z0K1J032925082552",
+    "_docId": "jQMVf7elPxIzeFGqwhum"
+  },
+  {
+    "date": "2025-10-16",
+    "rxNumbers": [
+      "11098"
+    ],
+    "trackingNumber": "1Z0K1J031327225834",
+    "patientName": "Eliana Rozo",
+    "_docId": "jZp6vRQY7UQxhnVtcSI1"
+  },
+  {
+    "patientName": "Michelle Campisi",
+    "trackingNumber": "1Z0K1J03A430875016",
+    "date": "2025-12-09",
+    "rxNumbers": [
+      "1129101",
+      "1128901",
+      "1129001"
+    ],
+    "_docId": "kfqZAT9zsymnCFt5LQ4G"
+  },
+  {
+    "trackingNumber": "1Z0K1J030232392601",
+    "patientName": "Glen Hunter",
+    "rxNumbers": [
+      "10693"
+    ],
+    "date": "2025-09-23",
+    "_docId": "m8RFsagwtKsns2wRWclB"
+  },
+  {
+    "rxNumbers": [
+      "10910",
+      "10908",
+      "10909"
+    ],
+    "date": "2025-09-25",
+    "patientName": "Jose Gomez-Perez",
+    "trackingNumber": "1Z0K1J031310632603",
+    "_docId": "mA9xYM7q644PwJ239QAb"
+  },
+  {
+    "trackingNumber": "1Z0K1J031320344709",
+    "patientName": "Rajesh Lall",
+    "date": "2025-10-07",
+    "rxNumbers": [
+      "10758",
+      "10759",
+      "10757"
+    ],
+    "_docId": "mtHAhc7NAHKwsRCZd4ts"
+  },
+  {
+    "patientName": "Tonya Culliton",
+    "trackingNumber": "1Z0K1J031313218770",
+    "rxNumbers": [
+      "1149600",
+      "1149700"
+    ],
+    "date": "2025-12-04",
+    "_docId": "n06o5825pCeM8vIVoy4Y"
+  },
+  {
+    "date": "2025-10-16",
+    "rxNumbers": [
+      "11106",
+      "11107"
+    ],
+    "trackingNumber": "1Z0K1J031306990510",
+    "patientName": "James Ware",
+    "_docId": "nwYnzQsLw0fQI0JJoo6n"
+  },
+  {
+    "date": "2025-10-07",
+    "rxNumbers": [
+      "1051302",
+      "1051402",
+      "1051502"
+    ],
+    "trackingNumber": "1Z0K1J032933254511",
+    "patientName": "Shonnie Moore",
+    "_docId": "o1K1F0LdbEZQCJpy9NdC"
+  },
+  {
+    "date": "2025-12-11",
+    "rxNumbers": [
+      "1156000",
+      "1156200",
+      "1156100"
+    ],
+    "patientName": "Travis Dippel",
+    "trackingNumber": "1Z0K1J03A409602038",
+    "_docId": "o21A2HtM1VzavYse9CM1"
+  },
+  {
+    "date": "2025-12-04",
+    "rxNumbers": [
+      "1149300",
+      "1194400",
+      "1149500"
+    ],
+    "patientName": "Ian Xin",
+    "trackingNumber": "1Z0K1J031337369189",
+    "_docId": "o7B5AJfKhWig1HuXtn4L"
+  },
+  {
+    "trackingNumber": "1Z0K1J031305853527",
+    "patientName": "Tonya Culliton",
+    "date": "2025-10-21",
+    "rxNumbers": [
+      "11133",
+      "11134"
+    ],
+    "_docId": "o7jpcyaTgnbt5arB3RLW"
+  },
+  {
+    "rxNumbers": [
+      "1163200",
+      "1163300"
+    ],
+    "date": "2025-12-17",
+    "trackingNumber": "1Z0K1J03A426526259",
+    "patientName": "Charlene Purvis-Driggs",
+    "_docId": "p1ZY0r3mLKbNOFVasY5e"
+  },
+  {
+    "date": "2025-11-20",
+    "rxNumbers": [
+      "11416",
+      "11417"
+    ],
+    "patientName": "Christopher Dials",
+    "trackingNumber": "1Z0K1J031312847342",
+    "_docId": "pkJU58Nae8MgwT09u5sl"
+  },
+  {
+    "patientName": "Michelle Campisi",
+    "trackingNumber": "1Z0K1J03A627377307",
+    "date": "2025-12-23",
+    "rxNumbers": [
+      "1129002",
+      "1129102",
+      "1128902"
+    ],
+    "_docId": "q3TVmP7CHbEpmmLfAhDU"
+  },
+  {
+    "date": "2025-12-11",
+    "rxNumbers": [
+      "1156800",
+      "1156600",
+      "1156700"
+    ],
+    "patientName": "Scooby Falls",
+    "trackingNumber": "1Z0K1J03A415781824",
+    "_docId": "q6xkGCahwd9w8sEzsCV8"
+  },
+  {
+    "date": "2025-10-28",
+    "rxNumbers": [
+      "10977"
+    ],
+    "trackingNumber": "1Z0K1J032908277731",
+    "patientName": "Fidel Sanchez",
+    "_docId": "qWltKOShO7xU0A81HjAQ"
+  },
+  {
+    "date": "2025-11-13",
+    "rxNumbers": [
+      "11349",
+      "11350",
+      "11351"
+    ],
+    "trackingNumber": "1Z0K1J031321604499",
+    "patientName": "Avernige Harris",
+    "_docId": "qfKR2jVFbdNA8AaP1cTe"
+  },
+  {
+    "trackingNumber": "1Z0K1J031313266576",
+    "patientName": "Zara Sanchez",
+    "date": "2025-10-30",
+    "rxNumbers": [
+      "11233"
+    ],
+    "_docId": "qjYzex3vXiGM47eD5s8O"
+  },
+  {
+    "rxNumbers": [
+      "11271",
+      "11272",
+      "11273"
+    ],
+    "date": "2025-11-06",
+    "trackingNumber": "1Z0K1J032911709624",
+    "patientName": "Priscilla Wheeler",
+    "_docId": "qvGINTDFXEQPcfpSNQ3w"
+  },
+  {
+    "date": "2025-11-20",
+    "rxNumbers": [
+      "11418",
+      "11419"
+    ],
+    "trackingNumber": "1Z0K1J031334830130",
+    "patientName": "Jorge Cazares",
+    "_docId": "rPwfGr5YFQb4etxEsETD"
+  },
+  {
+    "rxNumbers": [
+      "1141501"
+    ],
+    "date": "2025-12-18",
+    "patientName": "Stacey Downs",
+    "trackingNumber": "1Z0K1J031325537288",
+    "_docId": "rUQMYcpvSflxjajuEGGU"
+  },
+  {
+    "patientName": "Brandon Leal",
+    "trackingNumber": "1Z0K1J031303542054",
+    "date": "2025-12-18",
+    "rxNumbers": [
+      "1163400",
+      "1163500",
+      "1163600"
+    ],
+    "_docId": "rlGB01EEaXA24Ry7LiHg"
+  },
+  {
+    "date": "2026-02-26",
+    "rxNumbers": [
+      "1214400",
+      "1214500",
+      "1214200",
+      "1214300"
+    ],
+    "patientName": "Jerrick Williams",
+    "trackingNumber": "1Z0K1J03A409775110",
+    "_docId": "rma7KlYnz28ADigYvRAl"
+  },
+  {
+    "rxNumbers": [
+      "1163000",
+      "1163100",
+      "1162900"
+    ],
+    "date": "2025-12-18",
+    "patientName": "Thomas Degeoso",
+    "trackingNumber": "1Z0K1J03A439271072",
+    "_docId": "sSr2MDvpcP4uRjEXxZXz"
+  },
+  {
+    "trackingNumber": "1Z0K1J031325414473",
+    "patientName": "Joe Patino",
+    "date": "2025-10-02",
+    "rxNumbers": [
+      "10953"
+    ],
+    "_docId": "sy2JRskVhdvnKqtDDZDV"
+  },
+  {
+    "patientName": "Ian Xin",
+    "trackingNumber": "1Z0K1J03A411767544",
+    "rxNumbers": [
+      "1174300",
+      "1174400",
+      "1174500"
+    ],
+    "date": "2026-01-08",
+    "_docId": "uRgPlyMYKIULtPuqvGpg"
+  },
+  {
+    "date": "2025-11-13",
+    "rxNumbers": [
+      "11363",
+      "11364",
+      "11362"
+    ],
+    "trackingNumber": "1Z0K1J031319182673",
+    "patientName": "Rajesh Lall",
+    "_docId": "uZPPT0ALdk8smatJkC7K"
+  },
+  {
+    "trackingNumber": "1Z0K1J031325769402",
+    "patientName": "Avernige Harris",
+    "rxNumbers": [
+      "1182300",
+      "1182400",
+      "1182500"
+    ],
+    "date": "2026-01-15",
+    "_docId": "ubL0hJp7dvFh5z9ajGbI"
+  },
+  {
+    "trackingNumber": "1Z0K1J031338653360",
+    "patientName": "Jorge Cazares",
+    "date": "2025-09-16",
+    "rxNumbers": [
+      "10777",
+      "10776"
+    ],
+    "_docId": "uwAW04WaLPdxR4MwMR3K"
+  },
+  {
+    "rxNumbers": [
+      "1167700",
+      "1167800",
+      "1167900"
+    ],
+    "date": "2025-12-23",
+    "trackingNumber": "1Z0K1J03A407692490",
+    "patientName": "Delmy Granados",
+    "_docId": "v9ANLkaNWhdUkhE6kRUa"
+  },
+  {
+    "rxNumbers": [
+      "11195-Balance"
+    ],
+    "date": "2025-10-29",
+    "trackingNumber": "1Z0K1J031314465751",
+    "patientName": "Margaret Davis",
+    "_docId": "vIYyI89WxBUZBZVIKM6J"
+  },
+  {
+    "patientName": "Herbert Drain",
+    "trackingNumber": "1Z0K1J03A434054128",
+    "date": "2026-01-08",
+    "rxNumbers": [
+      "1176100",
+      "1176000",
+      "1174200"
+    ],
+    "_docId": "vSpnognq7HQ4Tv7cHf6Y"
+  },
+  {
+    "date": "2026-03-12",
+    "rxNumbers": [
+      "1224600",
+      "1224600"
+    ],
+    "trackingNumber": "1Z0K1J032918145382",
+    "patientName": "Andre Drumgoole",
+    "_docId": "wEeey8sWyb3FIJhynj2L"
+  },
+  {
+    "date": "2025-11-13",
+    "rxNumbers": [
+      "11341",
+      "11342",
+      "11343",
+      "11340",
+      "11344"
+    ],
+    "trackingNumber": "1Z0K1J032921353105",
+    "patientName": "Gerson Morales",
+    "_docId": "wL24KORrcFb5KsdvugST"
+  },
+  {
+    "trackingNumber": "1Z0K1J03A410367746",
+    "patientName": "Prinisha Richard",
+    "date": "2026-03-05",
+    "rxNumbers": [
+      "1219300",
+      "1219100",
+      "1219200"
+    ],
+    "_docId": "wLKINL9fEv7FDj5opk79"
+  },
+  {
+    "patientName": "Priscilla Wheeler",
+    "trackingNumber": "1Z0K1J03A428719645",
+    "rxNumbers": [
+      "1156300",
+      "1156400",
+      "1156500"
+    ],
+    "date": "2025-12-11",
+    "_docId": "wUXPar0oPbZ51AGE3VIw"
+  },
+  {
+    "rxNumbers": [
+      "1159300",
+      "1159400"
+    ],
+    "date": "2025-12-18",
+    "patientName": "Craig Seele",
+    "trackingNumber": "1Z0K1J03A408589869",
+    "_docId": "wn8taIp8R33Sjq5iuA7m"
+  },
+  {
+    "date": "2026-03-03",
+    "rxNumbers": [
+      "12017900"
+    ],
+    "trackingNumber": "1Z0K1J030202790120",
+    "patientName": "Jane Deardorff",
+    "_docId": "wo7hjb6DLpEht6WgZULb"
+  },
+  {
+    "rxNumbers": [
+      "1190000",
+      "1190100"
+    ],
+    "date": "2026-01-29",
+    "trackingNumber": "1Z0K1J032939844891",
+    "patientName": "Nicholas Estrada",
+    "_docId": "xPhiefuPZzsMkWYWOUt1"
+  },
+  {
+    "patientName": "Monica Ann Torres",
+    "trackingNumber": "1Z0K1J031320665756",
+    "rxNumbers": [
+      "10889",
+      "11011"
+    ],
+    "date": "2025-10-09",
+    "_docId": "xSilr2tklLvupGiJ7RHc"
+  },
+  {
+    "patientName": "Amy Siarski",
+    "trackingNumber": "1Z0K1J030125781563",
+    "rxNumbers": [
+      "11023",
+      "11020"
+    ],
+    "date": "2025-10-09",
+    "_docId": "y4gJm4ZTXqpWDPMIYVqo"
+  },
+  {
+    "rxNumbers": [
+      "11285"
+    ],
+    "date": "2025-11-06",
+    "patientName": "Hernando Bustos",
+    "trackingNumber": "1Z0K1J031325422053",
+    "_docId": "y9G0L98TR5JrpAcDQVDV"
+  },
+  {
+    "trackingNumber": "1Z0K1J031320359846",
+    "patientName": "Rajesh Lall",
+    "date": "2026-01-22",
+    "rxNumbers": [
+      "1188100",
+      "1188300",
+      "1188200"
+    ],
+    "_docId": "yCeRsy0LaqfiUBnoMhOP"
+  },
+  {
+    "trackingNumber": "1Z0K1J034225866814",
+    "patientName": "Cheri Green",
+    "rxNumbers": [
+      "11203",
+      "11204",
+      "11202",
+      "11205"
+    ],
+    "date": "2025-11-04",
+    "_docId": "yE1lydWUrAwLdqSo0L9w"
+  },
+  {
+    "date": "2026-01-14",
+    "rxNumbers": [
+      "1173600-Completion"
+    ],
+    "trackingNumber": "1Z0K1J030134458351",
+    "patientName": "Teresa Perkins",
+    "_docId": "yKst4rJu582j1nMQt53h"
+  },
+  {
+    "rxNumbers": [
+      "1165700",
+      "1165800",
+      "1165900"
+    ],
+    "date": "2025-12-23",
+    "patientName": "Tiffany Johnson",
+    "trackingNumber": "1Z0K1J031304361088",
+    "_docId": "yWjp1SsM6EKsjdKiHfxl"
+  },
+  {
+    "trackingNumber": "1Z0K1J032929216801",
+    "patientName": "Ian Xin",
+    "date": "2025-10-15",
+    "rxNumbers": [
+      "10905",
+      "10906",
+      "10907",
+      "11056"
+    ],
+    "_docId": "yagpQah3VX2pbRphMiyP"
+  },
+  {
+    "patientName": "Alas Hahn",
+    "trackingNumber": "1Z0K1J032930880582",
+    "rxNumbers": [
+      "10825",
+      "10826"
+    ],
+    "date": "2025-09-18",
+    "_docId": "ynYNXn6K36GboJiTWDd4"
+  },
+  {
+    "date": "2026-02-26",
+    "rxNumbers": [
+      "1214100"
+    ],
+    "patientName": "Andre Drumgoole",
+    "trackingNumber": "1Z0K1J032918097309",
+    "_docId": "yt7eRniisHBhAXdODkdk"
+  },
+  {
+    "rxNumbers": [
+      "10901",
+      "10902"
+    ],
+    "date": "2025-09-25",
+    "trackingNumber": "1Z0K1J031335221420",
+    "patientName": "Christopher Eastwood",
+    "_docId": "zCEDHgkR1pOSG3L3d6zA"
+  },
+  {
+    "trackingNumber": "1Z0K1J031318642810",
+    "patientName": "Gregory Sliger",
+    "rxNumbers": [
+      "1150100",
+      "1150200"
+    ],
+    "date": "2025-12-11",
+    "_docId": "zpfgDeCKwcGfGoKThju5"
+  }
+]

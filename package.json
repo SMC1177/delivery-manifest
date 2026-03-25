@@ -6,7 +6,10 @@
   "scripts": {
     "build": "npx tailwindcss -i ./src/input.css -o ./dist/output.css --minify",
     "watch": "npx tailwindcss -i ./src/input.css -o ./dist/output.css --watch",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "cd v2 && pnpm test && cd ../functions && pnpm test",
+    "test:v2": "cd v2 && pnpm test",
+    "test:functions": "cd functions && pnpm test",
+    "prepare": "husky"
   },
   "keywords": [
     "firebase",
@@ -15,8 +18,15 @@
   ],
   "author": "",
   "license": "ISC",
+  "lint-staged": {
+    "v2/src/**/*.{js,jsx}": [
+      "./v2/node_modules/.bin/eslint --config v2/eslint.config.js --fix"
+    ]
+  },
   "devDependencies": {
     "autoprefixer": "^10.4.19",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3"
   }
