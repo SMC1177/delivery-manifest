@@ -20,7 +20,7 @@ Read CLAUDE.md first for project conventions. Use TodoWrite to update checkboxes
 
 - [x] Add USPS carrier support — currently only UPS and FedEx are in `v2/src/lib/carriers.js`. Add USPS with tracking URL `https://tools.usps.com/go/TrackConfirmAction?tLabels={trackingNumber}`. Update `functions/index.js` to detect USPS tracking numbers (starts with 9, 20-22 digits) and add scheduled sync if USPS has an API. Also add carrier option to ShipmentModal. Tests required: carrier detection, tracking URL generation, case insensitivity.
 
-- [ ] Date range filter default — change from "Last 14 days" to "Last 30 days" in DashboardPage.jsx. The 14-day default causes confusion when older shipments seem missing.
+- [x] Date range filter default — change from "Last 14 days" to "Last 30 days" in DashboardPage.jsx. The 14-day default causes confusion when older shipments seem missing.
 
 - [ ] Add "All" button to status filter that shows count — currently the "All" tab doesn't show how many total shipments there are. Add a count badge like "All (210)".
 

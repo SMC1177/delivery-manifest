@@ -32,9 +32,9 @@ export default function DashboardPage() {
 
   const [statusFilter, setStatusFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState(() => {
-    // Default to 14 days ago
+    // Default to 30 days ago
     const d = new Date()
-    d.setDate(d.getDate() - 14)
+    d.setDate(d.getDate() - 30)
     return getCentralTimeDateString(d)
   })
   const [dateTo, setDateTo] = useState(getCentralTimeDateString())
@@ -295,13 +295,13 @@ export default function DashboardPage() {
         <button
           onClick={() => {
             const d = new Date()
-            d.setDate(d.getDate() - 14)
+            d.setDate(d.getDate() - 30)
             setDateFrom(getCentralTimeDateString(d))
             setDateTo(getCentralTimeDateString())
           }}
           className="text-sm text-slate-500 hover:text-slate-700 px-2 py-1.5"
         >
-          Last 14 days
+          Last 30 days
         </button>
         <button
           onClick={() => {
