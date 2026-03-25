@@ -5,6 +5,7 @@ import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { mapFedExStatus } from './fedex-status.js'
 import { mapUpsStatus } from './ups-status.js'
+import { detectCarrier } from './carrier-detection.js'
 
 initializeApp()
 const firestore = getFirestore()
@@ -320,6 +321,13 @@ export const refreshFedExStatuses = onCall(
     }
   }
 )
+
+// ─── USPS ───────────────────────────────────────────────────────────────────
+// USPS tracking numbers: start with 9, 20-22 digits.
+// USPS uses XML-based Web Tools API (not OAuth REST like FedEx/UPS).
+// No scheduled sync implemented — tracking is handled via client-side URL only.
+// If USPS REST API becomes available, add secrets and sync here.
+// detectCarrier() is exported from ./carrier-detection.js
 
 // ─── UPS Integration ────────────────────────────────────────────────────────
 

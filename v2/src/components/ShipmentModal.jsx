@@ -166,7 +166,7 @@ export default function ShipmentModal({ isOpen, onClose, onSubmit, shipment }) {
               value={form.trackingNumber}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder={form.carrier === 'fedex' ? '7489...' : '1Z999AA...'}
+              placeholder={form.carrier === 'fedex' ? '7489...' : form.carrier === 'usps' ? '9400...' : '1Z999AA...'}
             />
           </div>
 

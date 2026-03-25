@@ -18,7 +18,7 @@ Read CLAUDE.md first for project conventions. Use TodoWrite to update checkboxes
 
 - [x] Clean up stale `scheduledUpsSync` Cloud Run service conflict — the function deploy fails with HTTP 409 because a Cloud Run service with this name already exists. Either delete the old Cloud Run service via `gcloud run services delete scheduledupssync --region us-central1` or rename the function. Note: gcloud CLI is not installed, may need to use Firebase console or install gcloud first. **Done:** Renamed function to `scheduledUpsStatusSync` to avoid the 409 conflict with the orphaned Cloud Run service.
 
-- [ ] Add USPS carrier support — currently only UPS and FedEx are in `v2/src/lib/carriers.js`. Add USPS with tracking URL `https://tools.usps.com/go/TrackConfirmAction?tLabels={trackingNumber}`. Update `functions/index.js` to detect USPS tracking numbers (starts with 9, 20-22 digits) and add scheduled sync if USPS has an API. Also add carrier option to ShipmentModal. Tests required: carrier detection, tracking URL generation, case insensitivity.
+- [x] Add USPS carrier support — currently only UPS and FedEx are in `v2/src/lib/carriers.js`. Add USPS with tracking URL `https://tools.usps.com/go/TrackConfirmAction?tLabels={trackingNumber}`. Update `functions/index.js` to detect USPS tracking numbers (starts with 9, 20-22 digits) and add scheduled sync if USPS has an API. Also add carrier option to ShipmentModal. Tests required: carrier detection, tracking URL generation, case insensitivity.
 
 - [ ] Date range filter default — change from "Last 14 days" to "Last 30 days" in DashboardPage.jsx. The 14-day default causes confusion when older shipments seem missing.
 
