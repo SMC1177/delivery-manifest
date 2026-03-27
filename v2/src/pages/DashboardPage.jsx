@@ -25,7 +25,8 @@ const STATUS_FILTERS = [
 
 export default function DashboardPage() {
   const { slug } = useParams()
-  const { user } = useAuth()
+  const { user, userData } = useAuth()
+  const isViewer = userData?.role === 'viewer'
   const { shipments, loading, error, addShipment, updateShipment, removeShipment } = useShipments(slug)
   const { logAction } = useAuditLog(slug)
   const addToast = useToast()
@@ -270,12 +271,14 @@ export default function DashboardPage() {
           >
             Export CSV
           </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            + Add Shipment
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              + Add Shipment
+            </button>
+          )}
         </div>
       </div>
 
@@ -361,9 +364,10 @@ export default function DashboardPage() {
         ) : (
           <ShipmentTable
             shipments={filtered}
-            onEdit={setEditShipment}
-            onDelete={setDeleteTarget}
-            onStatusChange={handleStatusChange}
+            onEdit={isViewer ? undefined : setEditShipment}
+            onDelete={isViewer ? undefined : setDeleteTarget}
+            onStatusChange={isViewer ? undefined : handleStatusChange}
+            readOnly={isViewer}
           />
         )}
       </div>
