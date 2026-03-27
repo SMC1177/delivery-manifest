@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { collection, getDocs, doc, getDoc, deleteDoc } from 'firebase/firestore'
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth'
 import { auth, db, storage } from '../lib/firebase'
 import { useOrganization } from '../hooks/useOrganization'
 import { useInvites } from '../hooks/useInvites'
@@ -224,6 +225,49 @@ export default function SettingsPage() {
       addToast('Scrub failed: ' + err.message, 'error')
     } finally {
       setScrubModal(null)
+    }
+  }
+
+  // Change password state
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
+
+  const isEmailUser = auth.currentUser?.providerData?.some((p) => p.providerId === 'password')
+
+  async function handleChangePassword() {
+    if (!newPassword || !confirmPassword || !currentPassword) {
+      addToast('Please fill in all fields', 'error')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      addToast('New passwords do not match', 'error')
+      return
+    }
+    if (newPassword.length < 8) {
+      addToast('Password must be at least 8 characters', 'error')
+      return
+    }
+
+    setChangingPassword(true)
+    try {
+      const user = auth.currentUser
+      const credential = EmailAuthProvider.credential(user.email, currentPassword)
+      await reauthenticateWithCredential(user, credential)
+      await updatePassword(user, newPassword)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      addToast('Password changed successfully')
+    } catch (err) {
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        addToast('Current password is incorrect', 'error')
+      } else {
+        addToast('Failed to change password: ' + err.message, 'error')
+      }
+    } finally {
+      setChangingPassword(false)
     }
   }
 
@@ -492,6 +536,52 @@ export default function SettingsPage() {
               <h3 className="text-sm font-semibold text-slate-900">Two-Factor Authentication</h3>
               <p className="text-sm text-green-600 font-medium">Enabled — Authenticator App</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password */}
+      {isEmailUser && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">Change Password</h2>
+          <div className="space-y-3 max-w-sm">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Current Password</label>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter current password"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="At least 8 characters"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Confirm New Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Re-enter new password"
+              />
+            </div>
+            <button
+              onClick={handleChangePassword}
+              disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {changingPassword ? 'Changing…' : 'Change Password'}
+            </button>
           </div>
         </div>
       )}
