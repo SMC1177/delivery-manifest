@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc, deleteDoc } from 'firebase/firestore'
 import { auth, db, storage } from '../lib/firebase'
 import { useOrganization } from '../hooks/useOrganization'
 import { useInvites } from '../hooks/useInvites'
@@ -175,6 +175,30 @@ export default function SettingsPage() {
 
   // Audit log expanded
   const [showAudit, setShowAudit] = useState(false)
+
+  // Import mapping state
+  const [importConfig, setImportConfig] = useState(null)
+  const [importConfigLoading, setImportConfigLoading] = useState(true)
+
+  useEffect(() => {
+    if (!slug) return
+    const configRef = doc(db, 'organizations', slug, 'settings', 'importConfig')
+    getDoc(configRef).then((snap) => {
+      if (snap.exists()) setImportConfig(snap.data())
+      setImportConfigLoading(false)
+    }).catch(() => setImportConfigLoading(false))
+  }, [slug])
+
+  async function handleClearMapping() {
+    try {
+      const configRef = doc(db, 'organizations', slug, 'settings', 'importConfig')
+      await deleteDoc(configRef)
+      setImportConfig(null)
+      addToast('Import mapping cleared')
+    } catch (err) {
+      addToast('Failed to clear mapping: ' + err.message, 'error')
+    }
+  }
 
   // Scrub modal state
   const [scrubModal, setScrubModal] = useState(null) // { fieldKey, fieldLabel, shipmentCount }
@@ -827,6 +851,58 @@ export default function SettingsPage() {
           </>
         )}
       </div>
+
+      {/* Import Column Mapping */}
+      {isAdmin && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">Import Column Mapping</h2>
+          {importConfigLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            </div>
+          ) : importConfig?.columnMappings ? (
+            <div>
+              <p className="text-sm text-slate-600 mb-3">
+                Saved mapping ({Object.keys(importConfig.columnMappings).length} fields configured)
+              </p>
+              <div className="bg-slate-50 rounded-lg p-3 mb-4 text-sm space-y-1">
+                {Object.entries(importConfig.columnMappings).map(([field, col]) => (
+                  <div key={field} className="flex gap-2">
+                    <span className="font-medium text-slate-700 w-32">{field}:</span>
+                    <span className="text-slate-500">{Array.isArray(col) ? col.join(' + ') : col}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-3">
+                <a
+                  href={`/${slug}/import`}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Edit Mapping
+                </a>
+                <button
+                  onClick={handleClearMapping}
+                  className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  Clear Mapping
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-slate-500 mb-3">
+                Not configured. Upload a file on the Import page to set up column mapping.
+              </p>
+              <a
+                href={`/${slug}/import`}
+                className="inline-block px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                Go to Import
+              </a>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Audit Log */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">

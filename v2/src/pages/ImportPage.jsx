@@ -1,23 +1,28 @@
 import { useState, useRef } from 'react'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../components/Toast'
-import { parseExcelFile } from '../utils/excelImport'
-import ImportModal from '../components/ImportModal'
+import { readExcelHeaders, autoMapColumns, parseExcelFile } from '../utils/excelImport'
+import ColumnMappingScreen from '../components/ColumnMappingScreen'
+import ImportPreviewModal from '../components/ImportPreviewModal'
 
 export default function ImportPage() {
   const { orgSlug } = useAuth()
   const addToast = useToast()
   const fileInputRef = useRef(null)
+
   const [file, setFile] = useState(null)
   const [parsing, setParsing] = useState(false)
+  const [headers, setHeaders] = useState(null)
+  const [sampleRow, setSampleRow] = useState(null)
+  const [showMapping, setShowMapping] = useState(false)
+  const [currentMapping, setCurrentMapping] = useState(null)
   const [importResult, setImportResult] = useState(null)
 
   async function handleFileChange(e) {
     const selected = e.target.files[0]
     if (!selected) return
-    setFile(selected)
 
     const ext = selected.name.split('.').pop().toLowerCase()
     if (!['xlsx', 'xls'].includes(ext)) {
@@ -25,17 +30,30 @@ export default function ImportPage() {
       return
     }
 
+    setFile(selected)
     setParsing(true)
-    try {
-      // Fetch existing tracking numbers for dedup
-      const colRef = collection(db, 'organizations', orgSlug, 'shipments')
-      const snap = await getDocs(colRef)
-      const existingTracking = snap.docs
-        .map((d) => d.data().trackingNumber)
-        .filter(Boolean)
 
-      const result = await parseExcelFile(selected, existingTracking)
-      setImportResult(result)
+    try {
+      // Step 1: Read headers
+      const { headers: h, sampleRow: sr } = await readExcelHeaders(selected)
+      setHeaders(h)
+      setSampleRow(sr)
+
+      // Step 2: Check for saved import config
+      const configRef = doc(db, 'organizations', orgSlug, 'settings', 'importConfig')
+      const configSnap = await getDoc(configRef)
+
+      if (configSnap.exists()) {
+        // Saved config exists — apply it directly → show preview
+        const savedMapping = configSnap.data().columnMappings
+        setCurrentMapping(savedMapping)
+        await runImport(selected, savedMapping)
+      } else {
+        // No saved config — show column mapping screen with auto-mapped defaults
+        const autoMapped = autoMapColumns(h)
+        setCurrentMapping(autoMapped)
+        setShowMapping(true)
+      }
     } catch (err) {
       console.error('Parse error:', err)
       addToast(`Failed to parse file: ${err.message}`, 'error')
@@ -44,15 +62,71 @@ export default function ImportPage() {
     }
   }
 
+  async function runImport(fileToUse, mapping) {
+    const colRef = collection(db, 'organizations', orgSlug, 'shipments')
+    const snap = await getDocs(colRef)
+    const existingTracking = snap.docs
+      .map((d) => d.data().trackingNumber)
+      .filter(Boolean)
+
+    const result = await parseExcelFile(fileToUse, mapping, existingTracking)
+    setImportResult(result)
+  }
+
+  async function handleMappingSave(mapping) {
+    // Save mapping to Firestore
+    const configRef = doc(db, 'organizations', orgSlug, 'settings', 'importConfig')
+    await setDoc(configRef, {
+      columnMappings: mapping,
+      savedAt: new Date().toISOString(),
+    })
+
+    setCurrentMapping(mapping)
+    setShowMapping(false)
+    addToast('Column mapping saved', 'success')
+
+    // Now parse the file with this mapping
+    await runImport(file, mapping)
+  }
+
+  function handleRemap() {
+    setImportResult(null)
+    setShowMapping(true)
+  }
+
   function handleClose() {
     setImportResult(null)
+    setShowMapping(false)
     setFile(null)
+    setHeaders(null)
+    setSampleRow(null)
+    setCurrentMapping(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   function handleSuccess() {
     setFile(null)
+    setHeaders(null)
+    setSampleRow(null)
+    setImportResult(null)
+    setShowMapping(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  // Column mapping screen
+  if (showMapping && headers) {
+    return (
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 mb-6">Import Shipments</h1>
+        <ColumnMappingScreen
+          headers={headers}
+          sampleRow={sampleRow || {}}
+          initialMapping={currentMapping}
+          onSave={handleMappingSave}
+          onCancel={handleClose}
+        />
+      </div>
+    )
   }
 
   return (
@@ -66,7 +140,7 @@ export default function ImportPage() {
           </svg>
           <h2 className="text-lg font-semibold text-slate-900 mb-2">Upload a pharmacy export</h2>
           <p className="text-sm text-slate-500 mb-6">
-            Excel files (.xlsx, .xls) with shipment data. Columns are auto-detected.
+            Excel files (.xlsx, .xls) with shipment data. Columns are auto-detected and mapped.
           </p>
 
           <label className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 cursor-pointer transition-colors">
@@ -84,7 +158,7 @@ export default function ImportPage() {
             />
           </label>
 
-          {file && !importResult && !parsing && (
+          {file && !importResult && !parsing && !showMapping && (
             <div className="mt-4 p-3 bg-slate-50 rounded-lg">
               <p className="text-sm text-slate-700">
                 <span className="font-medium">Selected:</span> {file.name}
@@ -101,10 +175,11 @@ export default function ImportPage() {
       </div>
 
       {importResult && (
-        <ImportModal
+        <ImportPreviewModal
           result={importResult}
           onClose={handleClose}
           onSuccess={handleSuccess}
+          onRemap={handleRemap}
         />
       )}
     </div>

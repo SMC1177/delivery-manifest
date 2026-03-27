@@ -4,10 +4,12 @@ import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
 
-export default function ImportModal({ result, onClose, onSuccess }) {
+export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap }) {
   const { user, orgSlug } = useAuth()
   const addToast = useToast()
   const [importing, setImporting] = useState(false)
+
+  const { shipments, skippedNoTracking, skippedDuplicate, totalRows, preview, unmappedColumns } = result
 
   async function handleImport() {
     if (!orgSlug || !user) return
@@ -15,7 +17,6 @@ export default function ImportModal({ result, onClose, onSuccess }) {
 
     try {
       const colRef = collection(db, 'organizations', orgSlug, 'shipments')
-      const { shipments } = result
       const BATCH_SIZE = 500
       let imported = 0
 
@@ -57,8 +58,6 @@ export default function ImportModal({ result, onClose, onSuccess }) {
     }
   }
 
-  const { shipments, skippedNoTracking, skippedDuplicate, totalRows, preview } = result
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
@@ -70,19 +69,26 @@ export default function ImportModal({ result, onClose, onSuccess }) {
               <span className="font-semibold text-green-700">{shipments.length}</span> ready to import
             </p>
             {skippedNoTracking > 0 && (
-              <p className="text-amber-600">
-                {skippedNoTracking} skipped (no tracking number)
-              </p>
+              <p className="text-amber-600">{skippedNoTracking} skipped (no tracking number)</p>
             )}
             {skippedDuplicate > 0 && (
-              <p className="text-amber-600">
-                {skippedDuplicate} skipped (already imported)
-              </p>
+              <p className="text-amber-600">{skippedDuplicate} skipped (already imported)</p>
+            )}
+            {unmappedColumns && unmappedColumns.length > 0 && (
+              <p className="text-slate-500">{unmappedColumns.length} columns scrubbed (not stored)</p>
             )}
           </div>
+          {onRemap && (
+            <button
+              onClick={onRemap}
+              className="mt-2 text-sm text-blue-600 hover:text-blue-800 underline"
+            >
+              Re-map Columns
+            </button>
+          )}
         </div>
 
-        {preview.length > 0 && (
+        {preview && preview.length > 0 && (
           <div className="flex-1 overflow-auto p-6">
             <p className="text-xs font-medium text-slate-500 uppercase mb-2">
               Preview (first {preview.length} rows)
@@ -103,15 +109,9 @@ export default function ImportModal({ result, onClose, onSuccess }) {
                     <tr key={i} className="border-b border-slate-100">
                       <td className="py-2 px-2 text-slate-700">{s.date || '—'}</td>
                       <td className="py-2 px-2 text-slate-700">{s.patientName || '—'}</td>
-                      <td className="py-2 px-2 text-slate-700">
-                        {s.rxNumbers?.join(', ') || '—'}
-                      </td>
-                      <td className="py-2 px-2 text-slate-700 font-mono text-xs">
-                        {s.trackingNumber || '—'}
-                      </td>
-                      <td className="py-2 px-2 text-slate-700 truncate max-w-[200px]">
-                        {s.address || '—'}
-                      </td>
+                      <td className="py-2 px-2 text-slate-700">{s.rxNumbers?.join(', ') || '—'}</td>
+                      <td className="py-2 px-2 text-slate-700 font-mono text-xs">{s.trackingNumber || '—'}</td>
+                      <td className="py-2 px-2 text-slate-700 truncate max-w-[200px]">{s.address || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
