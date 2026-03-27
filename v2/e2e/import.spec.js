@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test'
+import { login, TEST_EMAIL, TEST_PASSWORD } from './helpers/login'
 
-test.describe('Import page', () => {
-  test('import page loads at root (redirects to login)', async ({ page }) => {
+test.describe('Import page (unauthenticated)', () => {
+  test('import page redirects to login when unauthenticated', async ({ page }) => {
     await page.goto('/test-org/import')
     const body = page.locator('body')
     await expect(body).not.toBeEmpty()
@@ -15,17 +16,26 @@ test.describe('Import page', () => {
 })
 
 test.describe('Import page (authenticated)', () => {
-  // TODO: Add login helper when test account is configured
+  let slug
 
-  test.skip('file input accepts .xlsx and .xls', async () => {
-    // Requires auth — placeholder
+  test.beforeEach(async ({ page }) => {
+    slug = await login(page, TEST_EMAIL, TEST_PASSWORD)
   })
 
-  test.skip('after selecting file, preview UI appears (not stub)', async () => {
-    // Requires auth — placeholder
+  test('file input accepts .xlsx and .xls', async ({ page }) => {
+    await page.goto(`/${slug}/import`)
+    const fileInput = page.locator('input[type="file"]')
+    await expect(fileInput).toHaveAttribute('accept', '.xlsx,.xls')
   })
 
-  test.skip('cancel button dismisses the modal', async () => {
-    // Requires auth — placeholder
+  test('upload button is visible on import page', async ({ page }) => {
+    await page.goto(`/${slug}/import`)
+    await expect(page.getByText('Choose File')).toBeVisible()
+  })
+
+  test('Phase 2 stub text is not present', async ({ page }) => {
+    await page.goto(`/${slug}/import`)
+    const stubText = page.getByText('File parsing coming in Phase 2')
+    await expect(stubText).not.toBeVisible({ timeout: 3000 })
   })
 })

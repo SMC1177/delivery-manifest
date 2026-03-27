@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { login, TEST_EMAIL, TEST_PASSWORD } from './helpers/login'
 
 test.describe('Shipments (unauthenticated)', () => {
   test('dashboard route redirects to login when unauthenticated', async ({ page }) => {
@@ -17,15 +18,26 @@ test.describe('Shipments (unauthenticated)', () => {
 })
 
 test.describe('Shipments (authenticated)', () => {
-  test.skip('shipments table renders', async () => {
-    // Requires auth — placeholder
+  test.beforeEach(async ({ page }) => {
+    await login(page, TEST_EMAIL, TEST_PASSWORD)
   })
 
-  test.skip('search input filters results', async () => {
-    // Requires auth — placeholder
+  test('shipments table or dashboard renders', async ({ page }) => {
+    // After login, should see dashboard content
+    await expect(page.locator('body')).not.toBeEmpty()
+    // Look for table or shipment-related content
+    const hasTable = await page.locator('table').first().isVisible({ timeout: 5000 }).catch(() => false)
+    const hasShipments = await page.getByText(/shipment/i).first().isVisible({ timeout: 3000 }).catch(() => false)
+    expect(hasTable || hasShipments).toBeTruthy()
   })
 
-  test.skip('date range filter works', async () => {
-    // Requires auth — placeholder
+  test('search input is present', async ({ page }) => {
+    const searchInput = page.locator('input[placeholder*="Search"]')
+    await expect(searchInput).toBeVisible({ timeout: 10000 })
+  })
+
+  test('date range filter is present', async ({ page }) => {
+    const dateInputs = page.locator('input[type="date"]')
+    await expect(dateInputs.first()).toBeVisible({ timeout: 10000 })
   })
 })
