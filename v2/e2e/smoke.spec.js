@@ -8,8 +8,7 @@ test.describe('Smoke tests', () => {
   })
 
   test('login page renders with email and password fields', async ({ page }) => {
-    await page.goto('/')
-    // Should see email and password input fields on the login/landing page
+    await page.goto('/login')
     const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="email" i]')
     const passwordInput = page.locator('input[type="password"], input[name="password"], input[placeholder*="password" i]')
     await expect(emailInput.first()).toBeVisible({ timeout: 10000 })
