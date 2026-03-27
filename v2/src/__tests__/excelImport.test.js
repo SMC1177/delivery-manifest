@@ -32,6 +32,17 @@ describe('autoMapColumns', () => {
     expect(result.trackingNumber).toBeUndefined()
     expect(Object.keys(result)).toHaveLength(0)
   })
+
+  it('does not match "Prescriber State" to address state field', () => {
+    const result = autoMapColumns([
+      'Ship To Address1', 'Ship To City', 'Ship To State', 'Ship To Zip Code',
+      'Prescriber State', 'Prescriber Name'
+    ])
+    expect(result.address).toContain('Ship To City')
+    expect(result.address).toContain('Ship To State')
+    expect(result.address).toContain('Ship To Zip Code')
+    expect(result.address).not.toContain('Prescriber State')
+  })
 })
 
 // --- 5: applyMapping ---

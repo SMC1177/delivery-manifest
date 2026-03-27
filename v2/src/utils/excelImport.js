@@ -32,12 +32,12 @@ const FUZZY_RULES = [
   [/rx.*number|rx\s*#|prescription/i, 'rxNumbers'],
   // trackingNumber
   [/tracking/i, 'trackingNumber'],
-  // address sub-fields
-  [/address\s*1|address1|street/i, 'address1'],
-  [/address\s*2|address2|apt|suite/i, 'address2'],
-  [/\bcity\b/i, 'city'],
-  [/\bstate\b/i, 'state'],
-  [/\bzip\b|postal/i, 'zip'],
+  // address sub-fields — require "Ship To" prefix or exact standalone match
+  [/ship\s*to\s*address\s*1|address\s*1|address1|street/i, 'address1'],
+  [/ship\s*to\s*address\s*2|address\s*2|address2|apt|suite/i, 'address2'],
+  [/ship\s*to\s*city|^city$/i, 'city'],
+  [/ship\s*to\s*state|^state$/i, 'state'],
+  [/ship\s*to\s*zip|^zip\s*code$|^zip$|postal/i, 'zip'],
   // carrier
   [/delivery\s*method|carrier|ship\s*method/i, 'carrier'],
   // date
