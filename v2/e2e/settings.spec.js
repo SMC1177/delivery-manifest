@@ -9,22 +9,15 @@ test.describe('Settings page (unauthenticated)', () => {
 })
 
 test.describe('Settings page (authenticated)', () => {
-  test.skip('settings page loads', async ({ page }) => {
-    // await loginAs(page, testAccount)
-    // await page.goto('/test-org/settings')
-    // await expect(page.getByText(/settings/i)).toBeVisible()
+  test.skip('settings page loads', async () => {
+    // Requires auth — placeholder
   })
 
-  test.skip('scrub feature is accessible', async ({ page }) => {
-    // await loginAs(page, testAccount)
-    // await page.goto('/test-org/settings')
-    // Verify HIPAA data scrubbing section exists
-    // await expect(page.getByText(/data scrub/i)).toBeVisible()
+  test.skip('scrub feature is accessible', async () => {
+    // Requires auth — placeholder
   })
 
-  test.skip('field visibility toggles are present', async ({ page }) => {
-    // await loginAs(page, testAccount)
-    // await page.goto('/test-org/settings')
-    // Verify field visibility section
+  test.skip('field visibility toggles are present', async () => {
+    // Requires auth — placeholder
   })
 })
