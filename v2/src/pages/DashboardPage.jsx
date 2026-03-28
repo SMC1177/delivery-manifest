@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, getDocs, writeBatch, doc } from 'firebase/firestore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
@@ -43,6 +43,47 @@ export default function DashboardPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [editShipment, setEditShipment] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+
+  // Secret clear-all: triple-click title → password prompt
+  const [showClearAll, setShowClearAll] = useState(false)
+  const [clearingAll, setClearingAll] = useState(false)
+  const clickCountRef = useRef(0)
+  const clickTimerRef = useRef(null)
+
+  function handleTitleClick() {
+    clickCountRef.current++
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0 }, 600)
+    if (clickCountRef.current >= 3) {
+      clickCountRef.current = 0
+      const pw = window.prompt('Enter admin password to unlock Clear All:')
+      if (pw === 'Yahtzee641517') {
+        setShowClearAll(true)
+        addToast('Clear All unlocked', 'info')
+      }
+    }
+  }
+
+  async function handleClearAll() {
+    if (!window.confirm(`Delete ALL ${shipments.length} shipments? This cannot be undone.`)) return
+    setClearingAll(true)
+    try {
+      const colRef = collection(db, 'organizations', slug, 'shipments')
+      const snap = await getDocs(colRef)
+      for (let i = 0; i < snap.docs.length; i += 500) {
+        const batch = writeBatch(db)
+        snap.docs.slice(i, i + 500).forEach((d) => batch.delete(doc(db, 'organizations', slug, 'shipments', d.id)))
+        await batch.commit()
+      }
+      await logAction('shipment.clear_all', null, { count: snap.size })
+      addToast(`Cleared ${snap.size} shipments`)
+      setShowClearAll(false)
+    } catch (err) {
+      addToast('Clear failed: ' + err.message, 'error')
+    } finally {
+      setClearingAll(false)
+    }
+  }
   const [refreshing, setRefreshing] = useState(false)
 
   // Shipments matching date + search filters (before status filter applied)
@@ -255,8 +296,22 @@ export default function DashboardPage() {
     <div>
       {/* Header — Title + Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-        <h1 className="text-2xl font-bold text-slate-900">Shipments</h1>
+        <h1
+          className="text-2xl font-bold text-slate-900 select-none cursor-default"
+          onClick={handleTitleClick}
+        >
+          Shipments
+        </h1>
         <div className="flex items-center gap-3">
+          {showClearAll && (
+            <button
+              onClick={handleClearAll}
+              disabled={clearingAll || shipments.length === 0}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+            >
+              {clearingAll ? 'Clearing...' : `Clear All (${shipments.length})`}
+            </button>
+          )}
           <button
             onClick={handleRefreshTracking}
             disabled={refreshing}
