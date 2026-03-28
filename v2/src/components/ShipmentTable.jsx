@@ -24,7 +24,7 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
       <div className="hidden md:block overflow-x-auto">
         <table className="min-w-full text-sm text-left">
           <thead>
-            <tr className="border-b border-slate-200 text-slate-500 uppercase text-xs tracking-wider">
+            <tr className="border-b border-slate-200 text-slate-500 uppercase text-xs tracking-wider sticky top-0 bg-white z-10">
               <th className="px-4 py-3 font-medium">Date</th>
               <th className="px-4 py-3 font-medium">Patient Name</th>
               {isFieldEnabled('address') && <th className="px-4 py-3 font-medium">Address</th>}

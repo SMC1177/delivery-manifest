@@ -335,7 +335,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div>
+    <div className="flex flex-col h-[calc(100vh-5rem)]">
       {/* Header — Title + Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
         <h1
@@ -380,7 +380,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4 shrink-0">
         <input
           type="text"
           placeholder="Search patient, RX, tracking..."
@@ -429,7 +429,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Status filter tabs */}
-      <div className="flex flex-wrap gap-1 mb-4 bg-white rounded-lg border border-slate-200 p-1 w-fit">
+      <div className="flex flex-wrap gap-1 mb-4 bg-white rounded-lg border border-slate-200 p-1 w-fit shrink-0">
         {STATUS_FILTERS.map((f) => (
           <button
             key={f.value}
@@ -453,7 +453,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+      <div className="bg-white rounded-xl border border-slate-200 flex-1 min-h-0 overflow-auto">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -470,7 +470,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Pagination + Count */}
-      <div className="mt-3 flex items-center justify-between">
+      <div className="mt-3 flex items-center justify-between shrink-0">
         <p className="text-sm text-slate-500">
           {filtered.length > PAGE_SIZE
             ? `Showing ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, filtered.length)} of ${filtered.length}`
