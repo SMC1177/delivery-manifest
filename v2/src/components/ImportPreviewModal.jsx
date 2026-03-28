@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
@@ -21,9 +21,11 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
       let imported = 0
 
       for (let i = 0; i < shipments.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db)
         const chunk = shipments.slice(i, i + BATCH_SIZE)
-        const promises = chunk.map((s) =>
-          addDoc(colRef, {
+        for (const s of chunk) {
+          const ref = doc(colRef)
+          batch.set(ref, {
             patientName: s.patientName || '',
             phone: s.phone || '',
             dob: s.dateOfBirth || '',
@@ -42,8 +44,8 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
             createdBy: user.uid,
             updatedBy: user.uid,
           })
-        )
-        await Promise.all(promises)
+        }
+        await batch.commit()
         imported += chunk.length
       }
 
