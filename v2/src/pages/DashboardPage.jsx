@@ -1,8 +1,9 @@
 import { useState, useRef, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
-import { collection, addDoc, serverTimestamp, getDocs, writeBatch, doc } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, getDocs, writeBatch, doc, getDoc } from 'firebase/firestore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
-import { db } from '../lib/firebase'
+import { EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'
+import { db, auth } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useShipments, getCentralTimeDateString, formatCentralTime } from '../hooks/useShipments'
 import { useAuditLog } from '../hooks/useAuditLog'
@@ -44,22 +45,57 @@ export default function DashboardPage() {
   const [editShipment, setEditShipment] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
 
-  // Secret clear-all: triple-click title → password prompt
+  // Secret clear-all: triple-click title → password modal → re-auth against org owner
   const [showClearAll, setShowClearAll] = useState(false)
+  const [showClearPrompt, setShowClearPrompt] = useState(false)
+  const [clearPassword, setClearPassword] = useState('')
   const [clearingAll, setClearingAll] = useState(false)
+  const [clearError, setClearError] = useState('')
+  const [ownerEmail, setOwnerEmail] = useState('')
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef(null)
 
-  function handleTitleClick() {
+  async function handleTitleClick() {
     clickCountRef.current++
     if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
     clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0 }, 600)
     if (clickCountRef.current >= 3) {
       clickCountRef.current = 0
-      const pw = window.prompt('Enter admin password to unlock Clear All:')
-      if (pw === 'Yahtzee641517') {
-        setShowClearAll(true)
-        addToast('Clear All unlocked', 'info')
+      // Look up the org owner's email
+      try {
+        const orgDoc = await getDoc(doc(db, 'organizations', slug))
+        const ownerId = orgDoc.data()?.createdBy
+        if (!ownerId) { addToast('No org owner found', 'error'); return }
+        const ownerProfile = await getDoc(doc(db, 'userProfiles', ownerId))
+        const email = ownerProfile.data()?.email
+        if (!email) { addToast('Owner email not found', 'error'); return }
+        setOwnerEmail(email)
+        setClearPassword('')
+        setClearError('')
+        setShowClearPrompt(true)
+      } catch (err) {
+        addToast('Failed to look up org owner', 'error')
+      }
+    }
+  }
+
+  async function handleClearAuth(e) {
+    e.preventDefault()
+    setClearError('')
+    try {
+      const credential = EmailAuthProvider.credential(ownerEmail, clearPassword)
+      await reauthenticateWithCredential(auth.currentUser, credential)
+      setShowClearPrompt(false)
+      setClearPassword('')
+      setShowClearAll(true)
+      addToast('Clear All unlocked', 'info')
+    } catch (err) {
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setClearError('Incorrect password.')
+      } else if (err.code === 'auth/user-mismatch') {
+        setClearError('You must be logged in as the account holder to clear data.')
+      } else {
+        setClearError(err.message)
       }
     }
   }
@@ -453,6 +489,55 @@ export default function DashboardPage() {
         onConfirm={handleDelete}
         patientName={deleteTarget?.patientName}
       />
+
+      {/* Clear All Auth Modal */}
+      {showClearPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <h2 className="text-lg font-semibold text-red-700 mb-2">Clear All Shipments</h2>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-red-700 font-medium">Warning: This action is permanent.</p>
+              <p className="text-sm text-red-600 mt-1">
+                Only the account holder ({ownerEmail}) can authorize clearing all shipment data.
+                Enter the account holder&apos;s password to proceed.
+              </p>
+            </div>
+            {clearError && (
+              <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                {clearError}
+              </div>
+            )}
+            <form onSubmit={handleClearAuth}>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Account Holder Password</label>
+              <input
+                type="password"
+                value={clearPassword}
+                onChange={(e) => setClearPassword(e.target.value)}
+                required
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 mb-4"
+                placeholder="Enter password"
+                autoFocus
+              />
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowClearPrompt(false); setClearPassword(''); setClearError('') }}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!clearPassword}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  Authenticate
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
