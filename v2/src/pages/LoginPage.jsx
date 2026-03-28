@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { sendPasswordResetEmail } from 'firebase/auth'
+import { auth } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { checkRateLimit, recordFailedAttempt, clearLoginAttempts } from '../lib/rateLimit'
 
@@ -14,8 +16,29 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = useState('')
   const [mfaError, setMfaError] = useState('')
 
+  const [resetSent, setResetSent] = useState(false)
+  const [resetError, setResetError] = useState('')
+
   const { login, completeMfaLogin, signInWithGoogle, signInWithMicrosoft } = useAuth()
   const navigate = useNavigate()
+
+  async function handleForgotPassword() {
+    if (!email.trim()) {
+      setError('Enter your email address first, then click Forgot Password.')
+      return
+    }
+    setResetError('')
+    try {
+      await sendPasswordResetEmail(auth, email.trim())
+      setResetSent(true)
+    } catch (err) {
+      if (err.code === 'auth/user-not-found') {
+        setResetError('No account found with that email.')
+      } else {
+        setResetError(err.message)
+      }
+    }
+  }
 
   function getErrorMessage(err) {
     switch (err.code) {
@@ -185,6 +208,28 @@ export default function LoginPage() {
               placeholder="********"
             />
           </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Forgot Password?
+            </button>
+          </div>
+
+          {resetSent && (
+            <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
+              Password reset email sent. Check your inbox.
+            </div>
+          )}
+
+          {resetError && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+              {resetError}
+            </div>
+          )}
 
           <button
             type="submit"

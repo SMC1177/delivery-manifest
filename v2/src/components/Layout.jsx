@@ -1,14 +1,17 @@
+import { useState } from 'react'
 import { Link, Outlet, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useOrganization } from '../hooks/useOrganization'
 import { useSessionTimeout } from '../hooks/useSessionTimeout'
 import SessionWarningModal from './SessionWarningModal'
+import AccountModal from './AccountModal'
 
 export default function Layout() {
   const { slug } = useParams()
   const { userData, logout } = useAuth()
   const { org } = useOrganization()
   const location = useLocation()
+  const [showAccount, setShowAccount] = useState(false)
 
   const { showWarning, remainingSeconds, dismissWarning } = useSessionTimeout(30, logout)
 
@@ -73,9 +76,12 @@ export default function Layout() {
               </nav>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-slate-500 hidden sm:inline">
+              <button
+                onClick={() => setShowAccount(true)}
+                className="text-sm text-slate-500 hover:text-slate-900 hidden sm:inline cursor-pointer"
+              >
                 {userData?.name || 'User'}
-              </span>
+              </button>
               {userData?.role === 'admin' && (
                 <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded hidden sm:inline">
                   Admin
@@ -118,6 +124,12 @@ export default function Layout() {
           onSignOut={logout}
         />
       )}
+
+      <AccountModal
+        isOpen={showAccount}
+        onClose={() => setShowAccount(false)}
+        userName={userData?.name}
+      />
     </div>
   )
 }
