@@ -22,7 +22,7 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
     <>
       {/* Desktop table */}
       <div className="hidden md:block overflow-x-auto">
-        <table className="w-full text-sm text-left">
+        <table className="min-w-full text-sm text-left">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500 uppercase text-xs tracking-wider">
               <th className="px-4 py-3 font-medium">Date</th>

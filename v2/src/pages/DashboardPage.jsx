@@ -44,6 +44,8 @@ export default function DashboardPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [editShipment, setEditShipment] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 100
 
   // Secret clear-all: triple-click title → password modal → re-auth against org owner
   const [showClearAll, setShowClearAll] = useState(false)
@@ -146,9 +148,13 @@ export default function DashboardPage() {
   }, [shipments, dateFrom, dateTo, search])
 
   const filtered = useMemo(() => {
-    if (statusFilter === 'all') return dateSearchFiltered
-    return dateSearchFiltered.filter((s) => s.status === statusFilter)
+    const result = statusFilter === 'all' ? dateSearchFiltered : dateSearchFiltered.filter((s) => s.status === statusFilter)
+    setPage(0) // reset to first page when filters change
+    return result
   }, [dateSearchFiltered, statusFilter])
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const paginatedShipments = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   // Counts per status for filter tab badges
   const statusCounts = useMemo(() => {
@@ -454,7 +460,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <ShipmentTable
-            shipments={filtered}
+            shipments={paginatedShipments}
             onEdit={isViewer ? undefined : setEditShipment}
             onDelete={isViewer ? undefined : setDeleteTarget}
             onStatusChange={isViewer ? undefined : handleStatusChange}
@@ -463,11 +469,36 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Count */}
-      <p className="mt-3 text-sm text-slate-500">
-        {filtered.length} shipment{filtered.length === 1 ? '' : 's'}
-        {statusFilter !== 'all' && ` (${statusFilter.replace('_', ' ')})`}
-      </p>
+      {/* Pagination + Count */}
+      <div className="mt-3 flex items-center justify-between">
+        <p className="text-sm text-slate-500">
+          {filtered.length > PAGE_SIZE
+            ? `Showing ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, filtered.length)} of ${filtered.length}`
+            : `${filtered.length} shipment${filtered.length === 1 ? '' : 's'}`}
+          {statusFilter !== 'all' && ` (${statusFilter.replace('_', ' ')})`}
+        </p>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
+            >
+              ← Back
+            </button>
+            <span className="text-sm text-slate-500">
+              Page {page + 1} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              className="px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
+            >
+              Next →
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Modals */}
       <ShipmentModal
