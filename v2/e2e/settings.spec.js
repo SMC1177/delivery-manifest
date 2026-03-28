@@ -16,21 +16,28 @@ test.describe('Settings page (authenticated — admin)', () => {
     slug = await login(page, ADMIN_EMAIL, ADMIN_PASSWORD)
   })
 
-  test('settings page loads', async ({ page }) => {
+  test('settings page loads with organization info', async ({ page }) => {
     await page.goto(`/${slug}/settings`)
-    await expect(page.locator('body')).not.toBeEmpty()
-    await page.waitForTimeout(2000)
+    await expect(page.getByRole('heading', { name: 'Organization' })).toBeVisible({ timeout: 10000 })
   })
 
-  test('scrub feature is accessible', async ({ page }) => {
+  test('branding section is visible', async ({ page }) => {
     await page.goto(`/${slug}/settings`)
-    const scrubText = page.getByText(/scrub/i).first()
-    await expect(scrubText).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Branding')).toBeVisible({ timeout: 10000 })
   })
 
-  test('field visibility section is present', async ({ page }) => {
+  test('shipment fields section is present', async ({ page }) => {
     await page.goto(`/${slug}/settings`)
-    const fieldText = page.getByText(/field/i).first()
-    await expect(fieldText).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Shipment Fields')).toBeVisible({ timeout: 10000 })
+  })
+
+  test('team management section is present', async ({ page }) => {
+    await page.goto(`/${slug}/settings`)
+    await expect(page.getByText(/team|members/i).first()).toBeVisible({ timeout: 10000 })
+  })
+
+  test('import column mapping section is present', async ({ page }) => {
+    await page.goto(`/${slug}/settings`)
+    await expect(page.getByText('Import Column Mapping')).toBeVisible({ timeout: 10000 })
   })
 })
