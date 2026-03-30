@@ -18,17 +18,17 @@ const upsClientId = defineSecret('UPS_CLIENT_ID')
 const upsClientSecret = defineSecret('UPS_CLIENT_SECRET')
 const upsMode = defineSecret('UPS_MODE')
 
-// Toggle between sandbox and production FedEx API
-// Set FEDEX_MODE to "production" when you get prod keys approved
+// FedEx API — defaults to production
+// Set FEDEX_MODE to "sandbox" to use sandbox for testing
 function getFedExBaseUrl() {
   try {
-    if (fedexMode.value() === 'production') {
-      return 'https://apis.fedex.com'
+    if (fedexMode.value() === 'sandbox') {
+      return 'https://apis-sandbox.fedex.com'
     }
   } catch {
-    // Secret not set yet — default to sandbox
+    // Secret not set yet — default to production
   }
-  return 'https://apis-sandbox.fedex.com'
+  return 'https://apis.fedex.com'
 }
 
 /**
@@ -191,8 +191,8 @@ async function fetchFedExTrackingBatch(token, trackingNumbers) {
 
 /**
  * Refresh FedEx statuses for all active shipments in a given org.
- * Batches up to 30 tracking numbers per API call (1 call = 1 API transaction).
- * Called by both the scheduled job and the manual "Refresh All" button.
+ * Batches 30 tracking numbers per API call, processes 5 batches in parallel,
+ * and writes updates in Firestore batches of 500.
  */
 async function syncFedExForOrg(orgSlug, apiKey, secretKey) {
   const shipmentsRef = firestore
@@ -216,61 +216,97 @@ async function syncFedExForOrg(orgSlug, apiKey, secretKey) {
   let updated = 0
   let apiCalls = 0
 
-  // Process in batches of 30 (FedEx max per request)
+  // Split into batches of 30 (FedEx max per request)
   const BATCH_SIZE = 30
+  const apiBatches = []
   for (let i = 0; i < docsWithTracking.length; i += BATCH_SIZE) {
-    const batch = docsWithTracking.slice(i, i + BATCH_SIZE)
-    const trackingNumbers = batch.map((d) => d.data().trackingNumber)
+    apiBatches.push(docsWithTracking.slice(i, i + BATCH_SIZE))
+  }
 
-    const trackResults = await fetchFedExTrackingBatch(token, trackingNumbers)
-    apiCalls++
+  // Process API batches in parallel chunks of 5 to avoid rate limits
+  const PARALLEL = 5
+  for (let i = 0; i < apiBatches.length; i += PARALLEL) {
+    const chunk = apiBatches.slice(i, i + PARALLEL)
+    const results = await Promise.allSettled(
+      chunk.map(async (batch) => {
+        const trackingNumbers = batch.map((d) => d.data().trackingNumber)
+        const trackResults = await fetchFedExTrackingBatch(token, trackingNumbers)
+        return { batch, trackResults }
+      })
+    )
 
-    for (const shipDoc of batch) {
-      const shipment = shipDoc.data()
-      const trackResult = trackResults.get(shipment.trackingNumber)
-      if (!trackResult) continue
+    apiCalls += chunk.length
 
-      const latestStatus = trackResult.latestStatusDetail
-      console.log(`Tracking ${shipment.trackingNumber}: code="${latestStatus?.code}", description="${latestStatus?.description}", statusByLocale="${latestStatus?.statusByLocale}"`)
-      const newStatus = mapFedExStatus(latestStatus?.code)
-
-      if (newStatus && newStatus !== shipment.status) {
-        const updates = {
-          status: newStatus,
-          fedexStatus: latestStatus?.statusByLocale || latestStatus?.code,
-          fedexDescription: latestStatus?.description || null,
-          updatedAt: FieldValue.serverTimestamp(),
-          updatedBy: 'system:fedex-sync',
-        }
-
-        if (newStatus === 'delivered') {
-          updates.deliveredAt = FieldValue.serverTimestamp()
-        }
-        if (newStatus === 'shipped' && !shipment.shippedAt) {
-          updates.shippedAt = FieldValue.serverTimestamp()
-        }
-
-        await shipDoc.ref.update(updates)
-        updated++
+    // Collect all updates for this chunk, then write in Firestore batches
+    const pendingUpdates = []
+    for (const result of results) {
+      if (result.status !== 'fulfilled') {
+        console.error('FedEx batch failed:', result.reason?.message)
+        continue
       }
+      const { batch, trackResults } = result.value
+      for (const shipDoc of batch) {
+        const shipment = shipDoc.data()
+        const trackResult = trackResults.get(shipment.trackingNumber)
+        if (!trackResult) continue
+
+        const latestStatus = trackResult.latestStatusDetail
+        const newStatus = mapFedExStatus(latestStatus?.code)
+
+        if (newStatus && newStatus !== shipment.status) {
+          const updates = {
+            status: newStatus,
+            fedexStatus: latestStatus?.statusByLocale || latestStatus?.code,
+            fedexDescription: latestStatus?.description || null,
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: 'system:fedex-sync',
+          }
+          if (newStatus === 'delivered') {
+            updates.deliveredAt = FieldValue.serverTimestamp()
+          }
+          if (newStatus === 'shipped' && !shipment.shippedAt) {
+            updates.shippedAt = FieldValue.serverTimestamp()
+          }
+          pendingUpdates.push({ ref: shipDoc.ref, updates })
+        }
+      }
+    }
+
+    // Batched Firestore writes (max 500 per batch)
+    const WRITE_BATCH_SIZE = 500
+    for (let w = 0; w < pendingUpdates.length; w += WRITE_BATCH_SIZE) {
+      const writeBatch = firestore.batch()
+      const slice = pendingUpdates.slice(w, w + WRITE_BATCH_SIZE)
+      for (const { ref, updates } of slice) {
+        writeBatch.update(ref, updates)
+      }
+      await writeBatch.commit()
+      updated += slice.length
     }
   }
 
+  console.log(`FedEx sync for ${orgSlug}: ${updated}/${docsWithTracking.length} updated, ${apiCalls} API calls`)
   return { updated, checked: docsWithTracking.length, apiCalls }
 }
 
 /**
- * Scheduled function: runs every 3 hours and syncs all active FedEx shipments
+ * Scheduled function: runs daily at 7 AM CT and syncs all active FedEx shipments
  * across all organizations.
  */
 export const scheduledFedExSync = onSchedule(
   {
-    schedule: '0 7,11,15,20 * * *',
+    schedule: '0 7 * * *',
     timeZone: 'America/Chicago',
-    secrets: [fedexApiKey, fedexSecretKey],
+    secrets: [fedexApiKey, fedexSecretKey, fedexMode],
+    timeoutSeconds: 540,
+    memory: '1GiB',
   },
   async () => {
     const orgsSnap = await firestore.collection('organizations').get()
+    if (orgsSnap.empty) {
+      console.log('FedEx sync: no organizations found, skipping.')
+      return
+    }
     let totalUpdated = 0
     let totalChecked = 0
 
@@ -455,7 +491,7 @@ export const trackUps = onCall(
 
 /**
  * Refresh UPS statuses for all active UPS shipments in a given org.
- * UPS doesn't support batch tracking, so we call one at a time with a small delay.
+ * Processes 3 tracking calls in parallel with batched Firestore writes.
  */
 async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
   const shipmentsRef = firestore
@@ -476,69 +512,92 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
   const token = await getUpsToken(clientId, clientSecret)
   let updated = 0
   let apiCalls = 0
+  const pendingUpdates = []
 
-  for (const shipDoc of docsWithTracking) {
-    const shipment = shipDoc.data()
+  // UPS has no batch API — process 3 at a time with small delay between chunks
+  const PARALLEL = 3
+  for (let i = 0; i < docsWithTracking.length; i += PARALLEL) {
+    const chunk = docsWithTracking.slice(i, i + PARALLEL)
+    const results = await Promise.allSettled(
+      chunk.map(async (shipDoc) => {
+        const shipment = shipDoc.data()
+        const data = await fetchUpsTracking(token, shipment.trackingNumber)
+        apiCalls++
+        if (!data) return null
 
-    try {
-      const data = await fetchUpsTracking(token, shipment.trackingNumber)
-      apiCalls++
+        const pkg = data?.trackResponse?.shipment?.[0]?.package?.[0]
+        if (!pkg) return null
 
-      if (!data) continue
+        const currentStatus = pkg.currentStatus || pkg.activity?.[0]?.status
+        const statusType = currentStatus?.type || null
+        const newStatus = mapUpsStatus(statusType)
 
-      const pkg = data?.trackResponse?.shipment?.[0]?.package?.[0]
-      if (!pkg) continue
-
-      const currentStatus = pkg.currentStatus || pkg.activity?.[0]?.status
-      const statusType = currentStatus?.type || null
-      const newStatus = mapUpsStatus(statusType)
-
-      console.log(`UPS tracking ${shipment.trackingNumber}: type="${statusType}", desc="${currentStatus?.description}", mapped="${newStatus}"`)
-
-      if (newStatus && newStatus !== shipment.status) {
-        const updates = {
-          status: newStatus,
-          upsStatus: currentStatus?.description || statusType,
-          upsDescription: currentStatus?.description || null,
-          updatedAt: FieldValue.serverTimestamp(),
-          updatedBy: 'system:ups-sync',
+        if (newStatus && newStatus !== shipment.status) {
+          const updates = {
+            status: newStatus,
+            upsStatus: currentStatus?.description || statusType,
+            upsDescription: currentStatus?.description || null,
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: 'system:ups-sync',
+          }
+          if (newStatus === 'delivered') {
+            updates.deliveredAt = FieldValue.serverTimestamp()
+          }
+          if (newStatus === 'shipped' && !shipment.shippedAt) {
+            updates.shippedAt = FieldValue.serverTimestamp()
+          }
+          return { ref: shipDoc.ref, updates }
         }
+        return null
+      })
+    )
 
-        if (newStatus === 'delivered') {
-          updates.deliveredAt = FieldValue.serverTimestamp()
-        }
-        if (newStatus === 'shipped' && !shipment.shippedAt) {
-          updates.shippedAt = FieldValue.serverTimestamp()
-        }
-
-        await shipDoc.ref.update(updates)
-        updated++
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        pendingUpdates.push(result.value)
       }
-    } catch (err) {
-      console.error(`UPS tracking failed for ${shipment.trackingNumber}:`, err.message)
     }
 
-    // Small delay between calls to avoid rate limiting
-    if (docsWithTracking.indexOf(shipDoc) < docsWithTracking.length - 1) {
-      await new Promise((r) => setTimeout(r, 250))
+    // Small delay between chunks to avoid rate limiting
+    if (i + PARALLEL < docsWithTracking.length) {
+      await new Promise((r) => setTimeout(r, 200))
     }
   }
 
+  // Batched Firestore writes (max 500 per batch)
+  const WRITE_BATCH_SIZE = 500
+  for (let w = 0; w < pendingUpdates.length; w += WRITE_BATCH_SIZE) {
+    const writeBatch = firestore.batch()
+    const slice = pendingUpdates.slice(w, w + WRITE_BATCH_SIZE)
+    for (const { ref, updates } of slice) {
+      writeBatch.update(ref, updates)
+    }
+    await writeBatch.commit()
+    updated += slice.length
+  }
+
+  console.log(`UPS sync for ${orgSlug}: ${updated}/${docsWithTracking.length} updated, ${apiCalls} API calls`)
   return { updated, checked: docsWithTracking.length, apiCalls }
 }
 
 /**
- * Scheduled function: runs on the same schedule as FedEx and syncs all active
+ * Scheduled function: runs daily at 7 AM CT and syncs all active
  * UPS shipments across all organizations.
  */
 export const scheduledUpsStatusSync = onSchedule(
   {
-    schedule: '0 7,11,15,20 * * *',
+    schedule: '0 7 * * *',
     timeZone: 'America/Chicago',
     secrets: [upsClientId, upsClientSecret, upsMode],
+    timeoutSeconds: 540,
+    memory: '1GiB',
   },
   async () => {
     const orgsSnap = await firestore.collection('organizations').get()
+    if (orgsSnap.empty) {
+      console.log('UPS sync: no organizations found, skipping.')
+      return
+    }
     let totalUpdated = 0
     let totalChecked = 0
 

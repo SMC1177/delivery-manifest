@@ -48,6 +48,8 @@ describe('useShipments', () => {
     it('creates a new shipment when no duplicates exist', async () => {
       // No existing tracking match
       mockGetDocs.mockResolvedValueOnce({ empty: true })
+      // Rx-based dedup: no patient match
+      mockGetDocs.mockResolvedValueOnce({ docs: [] })
       // No date/Rx overlap
       mockGetDocs.mockResolvedValueOnce({ empty: false, docs: [] })
 
@@ -139,6 +141,19 @@ describe('useShipments', () => {
     it('warns on date + overlapping Rx with different tracking', async () => {
       // No tracking match
       mockGetDocs.mockResolvedValueOnce({ empty: true })
+      // Rx-based dedup: patient exists but different Rx — not a full match
+      mockGetDocs.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'existing-id',
+            data: () => ({
+              patientName: 'Jane Doe',
+              rxNumbers: ['RX999'],
+              trackingNumber: '1Z_DIFFERENT',
+            }),
+          },
+        ],
+      })
       // Date query returns overlapping Rx
       mockGetDocs.mockResolvedValueOnce({
         empty: false,
@@ -173,6 +188,8 @@ describe('useShipments', () => {
     })
 
     it('creates shipment without tracking number (no duplicate check)', async () => {
+      // Rx-based dedup: no patient match
+      mockGetDocs.mockResolvedValueOnce({ docs: [] })
       // Date query returns no overlap
       mockGetDocs.mockResolvedValueOnce({ empty: false, docs: [] })
 
