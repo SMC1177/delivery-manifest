@@ -212,15 +212,25 @@ async function syncFedExForOrg(orgSlug, apiKey, secretKey) {
   const docsWithTracking = snap.docs.filter((d) => d.data().trackingNumber)
   if (docsWithTracking.length === 0) return { updated: 0, checked: 0, apiCalls: 0 }
 
+  // Dedupe: group all docs by tracking number so each number is polled only once
+  const byTracking = new Map()
+  for (const shipDoc of docsWithTracking) {
+    const tn = shipDoc.data().trackingNumber.trim()
+    if (!byTracking.has(tn)) byTracking.set(tn, [])
+    byTracking.get(tn).push(shipDoc)
+  }
+  const uniqueTrackingNumbers = [...byTracking.keys()]
+  console.log(`FedEx sync for ${orgSlug}: ${docsWithTracking.length} docs, ${uniqueTrackingNumbers.length} unique tracking numbers`)
+
   const token = await getFedExToken(apiKey, secretKey)
   let updated = 0
   let apiCalls = 0
 
-  // Split into batches of 30 (FedEx max per request)
+  // Split unique tracking numbers into batches of 30 (FedEx max per request)
   const BATCH_SIZE = 30
   const apiBatches = []
-  for (let i = 0; i < docsWithTracking.length; i += BATCH_SIZE) {
-    apiBatches.push(docsWithTracking.slice(i, i + BATCH_SIZE))
+  for (let i = 0; i < uniqueTrackingNumbers.length; i += BATCH_SIZE) {
+    apiBatches.push(uniqueTrackingNumbers.slice(i, i + BATCH_SIZE))
   }
 
   // Process API batches in parallel chunks of 5 to avoid rate limits
@@ -228,32 +238,32 @@ async function syncFedExForOrg(orgSlug, apiKey, secretKey) {
   for (let i = 0; i < apiBatches.length; i += PARALLEL) {
     const chunk = apiBatches.slice(i, i + PARALLEL)
     const results = await Promise.allSettled(
-      chunk.map(async (batch) => {
-        const trackingNumbers = batch.map((d) => d.data().trackingNumber)
-        const trackResults = await fetchFedExTrackingBatch(token, trackingNumbers)
-        return { batch, trackResults }
+      chunk.map(async (trackingBatch) => {
+        const trackResults = await fetchFedExTrackingBatch(token, trackingBatch)
+        return trackResults
       })
     )
 
     apiCalls += chunk.length
 
-    // Collect all updates for this chunk, then write in Firestore batches
+    // Collect all updates — apply each API result to ALL docs sharing that tracking number
     const pendingUpdates = []
     for (const result of results) {
       if (result.status !== 'fulfilled') {
         console.error('FedEx batch failed:', result.reason?.message)
         continue
       }
-      const { batch, trackResults } = result.value
-      for (const shipDoc of batch) {
-        const shipment = shipDoc.data()
-        const trackResult = trackResults.get(shipment.trackingNumber)
-        if (!trackResult) continue
-
+      const trackResults = result.value
+      for (const [tn, trackResult] of trackResults) {
         const latestStatus = trackResult.latestStatusDetail
         const newStatus = mapFedExStatus(latestStatus?.code)
+        if (!newStatus) continue
 
-        if (newStatus && newStatus !== shipment.status) {
+        // Apply to every doc with this tracking number
+        for (const shipDoc of (byTracking.get(tn) || [])) {
+          const shipment = shipDoc.data()
+          if (newStatus === shipment.status) continue
+
           const updates = {
             status: newStatus,
             fedexStatus: latestStatus?.statusByLocale || latestStatus?.code,
@@ -285,7 +295,7 @@ async function syncFedExForOrg(orgSlug, apiKey, secretKey) {
     }
   }
 
-  console.log(`FedEx sync for ${orgSlug}: ${updated}/${docsWithTracking.length} updated, ${apiCalls} API calls`)
+  console.log(`FedEx sync for ${orgSlug}: ${updated}/${docsWithTracking.length} docs updated, ${apiCalls} API calls (${uniqueTrackingNumbers.length} unique TNs)`)
   return { updated, checked: docsWithTracking.length, apiCalls }
 }
 
@@ -509,19 +519,28 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
   const docsWithTracking = snap.docs.filter((d) => d.data().trackingNumber)
   if (docsWithTracking.length === 0) return { updated: 0, checked: 0, apiCalls: 0 }
 
+  // Dedupe: group all docs by tracking number so each number is polled only once
+  const byTracking = new Map()
+  for (const shipDoc of docsWithTracking) {
+    const tn = shipDoc.data().trackingNumber.trim()
+    if (!byTracking.has(tn)) byTracking.set(tn, [])
+    byTracking.get(tn).push(shipDoc)
+  }
+  const uniqueTrackingNumbers = [...byTracking.keys()]
+  console.log(`UPS sync for ${orgSlug}: ${docsWithTracking.length} docs, ${uniqueTrackingNumbers.length} unique tracking numbers`)
+
   const token = await getUpsToken(clientId, clientSecret)
   let updated = 0
   let apiCalls = 0
   const pendingUpdates = []
 
-  // UPS has no batch API — process 3 at a time with small delay between chunks
+  // UPS has no batch API — process 3 unique tracking numbers at a time
   const PARALLEL = 3
-  for (let i = 0; i < docsWithTracking.length; i += PARALLEL) {
-    const chunk = docsWithTracking.slice(i, i + PARALLEL)
+  for (let i = 0; i < uniqueTrackingNumbers.length; i += PARALLEL) {
+    const chunk = uniqueTrackingNumbers.slice(i, i + PARALLEL)
     const results = await Promise.allSettled(
-      chunk.map(async (shipDoc) => {
-        const shipment = shipDoc.data()
-        const data = await fetchUpsTracking(token, shipment.trackingNumber)
+      chunk.map(async (tn) => {
+        const data = await fetchUpsTracking(token, tn)
         apiCalls++
         if (!data) return null
 
@@ -532,34 +551,39 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
         const statusType = currentStatus?.type || null
         const newStatus = mapUpsStatus(statusType)
 
-        if (newStatus && newStatus !== shipment.status) {
-          const updates = {
-            status: newStatus,
-            upsStatus: currentStatus?.description || statusType,
-            upsDescription: currentStatus?.description || null,
-            updatedAt: FieldValue.serverTimestamp(),
-            updatedBy: 'system:ups-sync',
-          }
-          if (newStatus === 'delivered') {
-            updates.deliveredAt = FieldValue.serverTimestamp()
-          }
-          if (newStatus === 'shipped' && !shipment.shippedAt) {
-            updates.shippedAt = FieldValue.serverTimestamp()
-          }
-          return { ref: shipDoc.ref, updates }
-        }
-        return null
+        return { tn, newStatus, currentStatus, statusType }
       })
     )
 
     for (const result of results) {
-      if (result.status === 'fulfilled' && result.value) {
-        pendingUpdates.push(result.value)
+      if (result.status !== 'fulfilled' || !result.value) continue
+      const { tn, newStatus, currentStatus, statusType } = result.value
+      if (!newStatus) continue
+
+      // Apply to every doc with this tracking number
+      for (const shipDoc of (byTracking.get(tn) || [])) {
+        const shipment = shipDoc.data()
+        if (newStatus === shipment.status) continue
+
+        const updates = {
+          status: newStatus,
+          upsStatus: currentStatus?.description || statusType,
+          upsDescription: currentStatus?.description || null,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: 'system:ups-sync',
+        }
+        if (newStatus === 'delivered') {
+          updates.deliveredAt = FieldValue.serverTimestamp()
+        }
+        if (newStatus === 'shipped' && !shipment.shippedAt) {
+          updates.shippedAt = FieldValue.serverTimestamp()
+        }
+        pendingUpdates.push({ ref: shipDoc.ref, updates })
       }
     }
 
     // Small delay between chunks to avoid rate limiting
-    if (i + PARALLEL < docsWithTracking.length) {
+    if (i + PARALLEL < uniqueTrackingNumbers.length) {
       await new Promise((r) => setTimeout(r, 200))
     }
   }
@@ -576,7 +600,7 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
     updated += slice.length
   }
 
-  console.log(`UPS sync for ${orgSlug}: ${updated}/${docsWithTracking.length} updated, ${apiCalls} API calls`)
+  console.log(`UPS sync for ${orgSlug}: ${updated}/${docsWithTracking.length} docs updated, ${apiCalls} API calls (${uniqueTrackingNumbers.length} unique TNs)`)
   return { updated, checked: docsWithTracking.length, apiCalls }
 }
 
