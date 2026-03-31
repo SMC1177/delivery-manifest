@@ -8,7 +8,7 @@
 
 ## Authentication & Authorization
 
-- **`src/contexts/AuthContext.jsx`** — Core auth provider. Email/password, Google OAuth, Microsoft OAuth, TOTP MFA. Manages `user`, `userData`, `orgSlug`, `loading`. Key methods: `login()`, `completeMfaLogin()`, `register()`, `signInWithGoogle()`, `signInWithMicrosoft()`, `createOrganization()`, `joinOrganization()`, `updateMfaStatus()`, `dismissWelcome()`, `reloadUser()`, `logout()`
+- **`src/contexts/AuthContext.jsx`** — Core auth provider. Email/password, Google OAuth, Microsoft OAuth, TOTP MFA. Manages `user`, `userData`, `orgSlug`, `loading`. Key methods: `login()`, `completeMfaLogin()`, `register()`, `signInWithGoogle()`, `signInWithMicrosoft()`, `createOrganization()`, `joinOrganization()`, `updateMfaStatus()`, `dismissWelcome()`, `reloadUser()`, `logout()`. **NOTE:** `register()` uses `{ merge: true }` to preserve admin-set `orgSlug`. OAuth sign-in methods never write `orgSlug: null`
 - **`src/components/ProtectedRoute.jsx`** — Route guard. Checks: authenticated, emailVerified, orgSlug loaded, welcomeDismissed. Redirects to `/login`, `/verify-email`, `/setup`, or `/:slug/welcome` as needed
 - **`src/lib/rateLimit.js`** — Login brute-force protection. `checkRateLimit(email)`, `recordFailedAttempt(email)`, `clearLoginAttempts(email)`. Max 5 fails, 15-min lockout. Firestore: `loginAttempts/{emailHash}`
 - **`src/lib/password.js`** — Password validation + strength scoring. `validatePassword(password)` → error array. `getPasswordStrength(password)` → `{ score, label, color }`. Requirements: 8+ chars, uppercase, lowercase, number
@@ -19,12 +19,12 @@
 - **`src/pages/LoginPage.jsx`** — Route: `/login`. Email/password + OAuth login. MFA code entry. Rate limiting integration
 - **`src/pages/RegisterPage.jsx`** — Route: `/register`. Registration with password strength meter. OAuth buttons
 - **`src/pages/VerifyEmailPage.jsx`** — Route: `/verify-email`. 3-second polling via `reloadUser()`. Resend with 60s cooldown
-- **`src/pages/SetupPage.jsx`** — Route: `/setup`. 3-step wizard: org name → slug (availability check) → TOTP 2FA setup (optional). Creates `organizations/{slug}` doc
+- **`src/pages/SetupPage.jsx`** — Route: `/setup`. 3-step wizard: org name → slug (availability check) → TOTP 2FA setup (optional). Creates `organizations/{slug}` doc. **"Join Existing Organization"** section on step 1: enter org ID + invite code to join via `findInviteByCode()` + `redeemInvite()` + `joinOrganization()`
 - **`src/pages/WelcomePage.jsx`** — Route: `/:slug/welcome`. Post-setup welcome with optional 2FA. `dismissWelcome()` on complete
 - **`src/pages/JoinPage.jsx`** — Route: `/:slug/join?code=`. Invite redemption. Validates code, expiration, usage limits. Register + join or join existing
 - **`src/pages/DashboardPage.jsx`** — Route: `/:slug/dashboard`. Main shipment management. CRUD, status filter, date range, text search, CSV export, batch tracking refresh via Cloud Functions
-- **`src/pages/ImportPage.jsx`** — Route: `/:slug/import`. Excel file import. Parses .xlsx/.xls via `parseExcelFile()`, dedup against existing tracking numbers, opens `ImportModal` with preview
-- **`src/pages/SettingsPage.jsx`** — Route: `/:slug/settings`. Admin-only. Sections: branding (logo upload), field visibility toggles, team management, invite codes, 2FA setup, HIPAA data scrubbing, audit log viewer
+- **`src/pages/ImportPage.jsx`** — Route: `/:slug/import`. Excel file import. Parses .xlsx/.xls via `parseExcelFile()`, smart dedup via composite key (tracking + Rx + refill), opens `ImportPreviewModal` with preview showing new inserts and date-based updates
+- **`src/pages/SettingsPage.jsx`** — Route: `/:slug/settings`. Admin-only. Sections: branding (logo upload), field visibility toggles, team management, invite codes, 2FA setup, HIPAA data scrubbing, import column mapping (inline editor with manual/scan modes + re-map existing shipments), audit log viewer
 
 ## Shipment Management
 
@@ -39,8 +39,9 @@
 
 ## Excel Import
 
-- **`src/utils/excelImport.js`** — Pure functions for Excel parsing (no Firestore calls). Exports: `parseExcelFile(file, mapping, existingTrackingNumbers)` → `{ shipments, skippedNoTracking, skippedDuplicate, totalRows, preview, unmappedColumns }`. `readExcelHeaders(file)` → `{ headers, sampleRow }`. `autoMapColumns(headers)` fuzzy-maps Excel columns to universal fields. `applyMapping(rows, mapping)` transforms rows using saved mapping. `normalizeDate(value)` handles Excel serials, MM/DD/YYYY, YYYY-MM-DD, Date objects. `detectCarrierFromTracking(tn)` infers carrier. `concatenateAddress(row, cols)` joins multi-column addresses. Uses SheetJS (`xlsx` package)
-- **`src/components/ImportModal.jsx`** — Preview + confirm UI. Shows row counts, skip reasons, first 5 rows. Batch writes in 500-doc chunks via `addDoc()`. Success toast on complete
+- **`src/utils/excelImport.js`** — Pure functions for Excel parsing (no Firestore calls). Exports: `parseExcelFile(file, mapping, existingShipments)` → `{ shipments, updates, skippedNoTracking, skippedDuplicate, totalRows, preview, unmappedColumns }`. **Smart dedup:** composite key (tracking # + Rx numbers + refill #, case-insensitive). If key matches + newer date → update (returned in `updates`). If key matches + same/older date → skip. No match → new. Also: `readExcelHeaders(file)` → `{ headers, sampleRow }`. `autoMapColumns(headers)` fuzzy-maps via FUZZY_RULES (includes Date Shipped, Ship Date, Refill #). `applyMapping(rows, mapping)` transforms rows. `previewRemap(file, mapping, existingShipments)` → diffs parsed rows vs existing for re-map flow. `normalizeDate()`, `detectCarrierFromTracking()`, `concatenateAddress()`, `parseRxNumbers()`. Uses SheetJS (`xlsx` package)
+- **`src/components/ColumnMappingScreen.jsx`** — Column mapping UI. Two modes: `dropdown` (default, needs `headers` from file) and `manual` (text inputs, no file needed). Props: `headers`, `sampleRow`, `initialMapping`, `onSave`, `onCancel`, `mode`, `onScanFile`. "Scan from File" button in manual mode triggers file upload to detect headers
+- **`src/components/ImportPreviewModal.jsx`** — Preview + confirm UI. Shows new inserts and date-based updates separately. Batch writes in 500-doc chunks: `addDoc()` for new, `batch.update()` for updates. Handles `refillNumber` field
 
 ## Organization Management
 
@@ -103,7 +104,7 @@
 ## Test Suite
 
 ### Unit Tests (Vitest)
-- **`src/__tests__/excelImport.test.js`** — Excel import parsing (22 tests). Date normalization, carrier detection, column mapping, Rx splitting, dedup logic
+- **`src/__tests__/excelImport.test.js`** — Excel import parsing (26 tests). Date normalization, carrier detection, column mapping, Rx splitting, dedup logic, fuzzy rules for Date Shipped/Ship Date, previewRemap (tracking match, case-insensitive, unchanged detection, field diff)
 - **`src/__tests__/useShipments.test.js`** — 4-tier duplicate detection tests (tracking skip, Rx merge, patient+Rx dedup, date+Rx warning)
 - **`src/__tests__/useDeliveries.test.js`** — Delivery hook tests
 - **`src/__tests__/ShipmentModal.test.jsx`** — Form modal tests
@@ -120,7 +121,7 @@
 - **`e2e/smoke.spec.js`** — Landing page loads, login fields render, 404 handling
 - **`e2e/import.spec.js`** — Import page renders, Phase 2 stub removed, file input validation
 - **`e2e/shipments.spec.js`** — Dashboard route auth gate, no JS errors
-- **`e2e/auth-flow.spec.js`** — (stub — needs test account)
+- **`e2e/auth-flow.spec.js`** — Auth redirect chain tests (8 tests). Unauthenticated redirects to /login, page rendering (login, register, landing, setup), public page navigation, invalid invite code handling
 
 ### Scripts
 ```bash
