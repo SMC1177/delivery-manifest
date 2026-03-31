@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, Link } from 'react-router-dom'
 import { multiFactor, TotpMultiFactorGenerator } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import QRCode from 'qrcode'
 import { auth, db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
+import { findInviteByCode, redeemInvite } from '../hooks/useInvites'
 
 function slugify(name) {
   return name
@@ -14,7 +15,7 @@ function slugify(name) {
 }
 
 export default function SetupPage() {
-  const { user, orgSlug, loading, createOrganization, updateMfaStatus } = useAuth()
+  const { user, orgSlug, loading, createOrganization, joinOrganization, updateMfaStatus } = useAuth()
   const navigate = useNavigate()
 
   const [step, setStep] = useState(1)
@@ -25,6 +26,11 @@ export default function SetupPage() {
   const [checkingSlug, setCheckingSlug] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [showJoinFlow, setShowJoinFlow] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
+  const [inviteSlug, setInviteSlug] = useState('')
+  const [joinError, setJoinError] = useState('')
+  const [joining, setJoining] = useState(false)
 
   // 2FA state
   const [qrDataUrl, setQrDataUrl] = useState('')
@@ -200,6 +206,74 @@ export default function SetupPage() {
             >
               Continue
             </button>
+
+            {/* Join Existing Organization */}
+            <div className="mt-6 pt-6 border-t border-slate-200">
+              {!showJoinFlow ? (
+                <button
+                  onClick={() => setShowJoinFlow(true)}
+                  className="w-full text-sm text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Have an invite code? Join an existing organization &rarr;
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-slate-700">Join Existing Organization</p>
+                  <p className="text-xs text-slate-500">Enter the organization ID and invite code from your admin.</p>
+                  {joinError && (
+                    <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                      {joinError}
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={inviteSlug}
+                      onChange={(e) => { setInviteSlug(e.target.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '')); setJoinError(''); }}
+                      placeholder="Organization ID (e.g. woodlandsrx)"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={inviteCode}
+                        onChange={(e) => { setInviteCode(e.target.value.trim()); setJoinError(''); }}
+                        placeholder="Invite code"
+                        className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <button
+                        onClick={async () => {
+                          if (!inviteSlug) { setJoinError('Enter the organization ID'); return }
+                          if (!inviteCode) { setJoinError('Enter the invite code'); return }
+                          setJoining(true)
+                          setJoinError('')
+                          try {
+                            const invite = await findInviteByCode(inviteSlug, inviteCode)
+                            if (!invite) { setJoinError('Invalid invite code for this organization'); setJoining(false); return }
+                            await redeemInvite(inviteSlug, invite.id, user.uid)
+                            await joinOrganization(inviteSlug, invite.role || 'staff')
+                            navigate(`/${inviteSlug}/welcome`)
+                          } catch (err) {
+                            setJoinError(err.message || 'Failed to join organization')
+                          }
+                          setJoining(false)
+                        }}
+                        disabled={joining}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                      >
+                        {joining ? 'Joining...' : 'Join'}
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setShowJoinFlow(false); setInviteCode(''); setInviteSlug(''); setJoinError(''); }}
+                    className="text-xs text-slate-500 hover:text-slate-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

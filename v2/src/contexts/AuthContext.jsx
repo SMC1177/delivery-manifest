@@ -111,7 +111,6 @@ export function AuthProvider({ children }) {
       await setDoc(doc(db, 'userProfiles', cred.user.uid), {
         email: cred.user.email,
         name: cred.user.displayName || cred.user.email,
-        orgSlug: null,
       })
     } else {
       await loadUserData(cred.user.uid)
@@ -139,7 +138,6 @@ export function AuthProvider({ children }) {
         await setDoc(doc(db, 'userProfiles', cred.user.uid), {
           email: cred.user.email,
           name: cred.user.displayName || cred.user.email,
-          orgSlug: null,
         })
       } else {
         await loadUserData(cred.user.uid)
@@ -163,11 +161,11 @@ export function AuthProvider({ children }) {
   async function register(email, password, name) {
     const cred = await createUserWithEmailAndPassword(auth, email, password)
     await sendEmailVerification(cred.user)
+    // merge: true preserves orgSlug if admin pre-created the profile
     await setDoc(doc(db, 'userProfiles', cred.user.uid), {
       email,
       name,
-      orgSlug: null,
-    })
+    }, { merge: true })
     return cred.user
   }
 
