@@ -9,7 +9,7 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
   const addToast = useToast()
   const [importing, setImporting] = useState(false)
 
-  const { shipments, skippedNoTracking, skippedDuplicate, totalRows, preview, unmappedColumns } = result
+  const { shipments, updates = [], skippedNoTracking, skippedDuplicate, totalRows, preview, unmappedColumns } = result
 
   async function handleImport() {
     if (!orgSlug || !user) return
@@ -19,7 +19,9 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
       const colRef = collection(db, 'organizations', orgSlug, 'shipments')
       const BATCH_SIZE = 500
       let imported = 0
+      let updated = 0
 
+      // Insert new shipments
       for (let i = 0; i < shipments.length; i += BATCH_SIZE) {
         const batch = writeBatch(db)
         const chunk = shipments.slice(i, i + BATCH_SIZE)
@@ -34,6 +36,7 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
             trackingNumber: s.trackingNumber || '',
             carrier: s.carrier || 'ups',
             date: s.date || '',
+            refillNumber: s.refillNumber || '',
             notes: s.notes || '',
             status: 'pending',
             redeliver: false,
@@ -49,7 +52,34 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
         imported += chunk.length
       }
 
-      addToast(`Imported ${imported} records successfully`, 'success')
+      // Update existing shipments with newer dates
+      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db)
+        const chunk = updates.slice(i, i + BATCH_SIZE)
+        for (const s of chunk) {
+          const ref = doc(db, 'organizations', orgSlug, 'shipments', s.shipmentId)
+          batch.update(ref, {
+            patientName: s.patientName || '',
+            phone: s.phone || '',
+            dob: s.dateOfBirth || '',
+            address: s.address || '',
+            rxNumbers: s.rxNumbers || [],
+            date: s.date || '',
+            refillNumber: s.refillNumber || '',
+            notes: s.notes || '',
+            carrier: s.carrier || 'ups',
+            updatedAt: serverTimestamp(),
+            updatedBy: user.uid,
+          })
+        }
+        await batch.commit()
+        updated += chunk.length
+      }
+
+      const parts = []
+      if (imported > 0) parts.push(`${imported} new`)
+      if (updated > 0) parts.push(`${updated} updated`)
+      addToast(`Import complete: ${parts.join(', ')}`, 'success')
       onSuccess?.()
       onClose()
     } catch (err) {
@@ -68,13 +98,16 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
           <div className="mt-2 space-y-1 text-sm">
             <p className="text-slate-700">
               Found <span className="font-semibold">{totalRows}</span> rows —{' '}
-              <span className="font-semibold text-green-700">{shipments.length}</span> ready to import
+              <span className="font-semibold text-green-700">{shipments.length}</span> new to import
+              {updates.length > 0 && (
+                <>, <span className="font-semibold text-blue-700">{updates.length}</span> to update (newer date)</>
+              )}
             </p>
             {skippedNoTracking > 0 && (
               <p className="text-amber-600">{skippedNoTracking} skipped (no tracking number)</p>
             )}
             {skippedDuplicate > 0 && (
-              <p className="text-amber-600">{skippedDuplicate} skipped (already imported)</p>
+              <p className="text-amber-600">{skippedDuplicate} skipped (unchanged duplicates)</p>
             )}
             {unmappedColumns && unmappedColumns.length > 0 && (
               <p className="text-slate-500">{unmappedColumns.length} columns scrubbed (not stored)</p>

@@ -65,11 +65,9 @@ export default function ImportPage() {
   async function runImport(fileToUse, mapping) {
     const colRef = collection(db, 'organizations', orgSlug, 'shipments')
     const snap = await getDocs(colRef)
-    const existingTracking = snap.docs
-      .map((d) => d.data().trackingNumber)
-      .filter(Boolean)
+    const existingShipments = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
 
-    const result = await parseExcelFile(fileToUse, mapping, existingTracking)
+    const result = await parseExcelFile(fileToUse, mapping, existingShipments)
     setImportResult(result)
   }
 

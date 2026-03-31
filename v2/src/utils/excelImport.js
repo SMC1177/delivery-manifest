@@ -11,6 +11,7 @@ export const UNIVERSAL_FIELDS = [
   { key: 'address', label: 'Address', required: false, isAddress: true },
   { key: 'carrier', label: 'Carrier', required: false },
   { key: 'date', label: 'Date', required: false },
+  { key: 'refillNumber', label: 'Refill #', required: false },
   { key: 'notes', label: 'Notes', required: false },
 ]
 
@@ -42,6 +43,8 @@ const FUZZY_RULES = [
   [/delivery\s*method|carrier|ship\s*method/i, 'carrier'],
   // date
   [/date\s*filled|fill\s*date|dispensed\s*date|date\s*written|date\s*dispensed|date\s*shipped|ship\s*date/i, 'date'],
+  // refillNumber
+  [/refill\s*#|refill\s*number|refill\s*no|nbr\s*of\s*refill/i, 'refillNumber'],
   // notes
   [/dispensed\s*drug|drug\s*description|drug\s*name/i, 'notes'],
 ]
@@ -205,6 +208,7 @@ export function applyMapping(rows, mapping) {
       trackingNumber: tracking,
       carrier: detectCarrierFromTracking(tracking),
       date: get('date') ? normalizeDate(get('date')) : '',
+      refillNumber: get('refillNumber') ? String(get('refillNumber')).trim() : '',
       notes: get('notes') ? String(get('notes')).trim() : '',
     }
   })
@@ -230,44 +234,86 @@ export function getUnmappedColumns(allHeaders, mapping) {
 }
 
 /**
+ * Build a composite dedup key from tracking #, Rx numbers, and refill #.
+ * All parts are lowercased and trimmed. Rx numbers are sorted for consistency.
+ */
+function buildDedupKey(trackingNumber, rxNumbers, refillNumber) {
+  const tracking = (trackingNumber || '').trim().toLowerCase()
+  const rx = Array.isArray(rxNumbers)
+    ? rxNumbers.map(r => String(r).trim().toLowerCase()).sort().join('|')
+    : String(rxNumbers || '').trim().toLowerCase()
+  const refill = String(refillNumber || '').trim().toLowerCase()
+  return `${tracking}::${rx}::${refill}`
+}
+
+/**
  * Parse an Excel file using a saved column mapping.
+ *
+ * Dedup logic (for pharmacies that re-import daily with updated dates):
+ * 1. Match by tracking # + Rx # + refill # (composite key)
+ * 2. If composite key matches an existing shipment AND the new date is newer → update
+ * 3. If composite key matches AND date is same or older → skip (true duplicate)
+ * 4. If no match → new shipment
  *
  * @param {File} file
  * @param {Record<string, string | string[]>} mapping - column mapping
- * @param {string[]} existingTrackingNumbers - for dedup
+ * @param {Array<{id: string, trackingNumber: string, rxNumbers?: string[], refillNumber?: string, date?: string}>} existingShipments - full Firestore docs for smart dedup
  * @returns {Promise<ParsedImportResult>}
  */
-export async function parseExcelFile(file, mapping, existingTrackingNumbers = []) {
+export async function parseExcelFile(file, mapping, existingShipments = []) {
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: 'array' })
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
 
-  // Get rows as objects keyed by header
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
   if (rows.length === 0) {
-    return { shipments: [], skippedNoTracking: 0, skippedDuplicate: 0, totalRows: 0, preview: [], unmappedColumns: [] }
+    return { shipments: [], updates: [], skippedNoTracking: 0, skippedDuplicate: 0, totalRows: 0, preview: [], unmappedColumns: [] }
   }
 
-  // Get all headers
   const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
   const allHeaders = rawData[0].map((h) => String(h).trim())
 
   const allMapped = applyMapping(rows, mapping)
-  const existingSet = new Set(existingTrackingNumbers.map((t) => t.toLowerCase()))
   const unmappedColumns = getUnmappedColumns(allHeaders, mapping)
+
+  // Index existing shipments by composite key
+  const existingByKey = new Map()
+  for (const ship of existingShipments) {
+    const key = buildDedupKey(ship.trackingNumber, ship.rxNumbers, ship.refillNumber)
+    existingByKey.set(key, ship)
+  }
 
   let skippedNoTracking = 0
   let skippedDuplicate = 0
-  const shipments = []
+  const shipments = [] // new inserts
+  const updates = []   // existing records with newer dates
 
   for (const s of allMapped) {
     if (!s.trackingNumber) { skippedNoTracking++; continue }
-    if (existingSet.has(s.trackingNumber.toLowerCase())) { skippedDuplicate++; continue }
-    shipments.push(s)
+
+    const key = buildDedupKey(s.trackingNumber, s.rxNumbers, s.refillNumber)
+    const existing = existingByKey.get(key)
+
+    if (existing) {
+      // Composite key matched — check if date is newer
+      const newDate = s.date || ''
+      const oldDate = existing.date || ''
+      if (newDate > oldDate) {
+        // Newer date → update the existing record
+        updates.push({ shipmentId: existing.id, ...s })
+      } else {
+        // Same or older date → true duplicate, skip
+        skippedDuplicate++
+      }
+    } else {
+      // No match → new shipment
+      shipments.push(s)
+    }
   }
 
   return {
     shipments,
+    updates,
     skippedNoTracking,
     skippedDuplicate,
     totalRows: allMapped.length,
