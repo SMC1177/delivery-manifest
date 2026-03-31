@@ -5,6 +5,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   sendEmailVerification,
+  multiFactor,
   TotpMultiFactorGenerator,
   getMultiFactorResolver,
   GoogleAuthProvider,
@@ -246,6 +247,16 @@ export function AuthProvider({ children }) {
     setUserData((prev) => (prev ? { ...prev, mfaEnrolled: enrolled } : prev))
   }
 
+  async function unenrollMfa() {
+    const mfUser = multiFactor(auth.currentUser)
+    if (mfUser.enrolledFactors.length === 0) return
+    // Unenroll all TOTP factors
+    for (const factor of mfUser.enrolledFactors) {
+      await mfUser.unenroll(factor)
+    }
+    await updateMfaStatus(false)
+  }
+
   async function dismissWelcome() {
     if (!orgSlug || !auth.currentUser) return
     const uid = auth.currentUser.uid
@@ -281,6 +292,7 @@ export function AuthProvider({ children }) {
     createOrganization,
     joinOrganization,
     updateMfaStatus,
+    unenrollMfa,
     dismissWelcome,
     logout,
     loadUserData,

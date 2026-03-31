@@ -155,7 +155,7 @@ export default function SettingsPage() {
   const { invites, createInvite, deleteInvite } = useInvites(slug)
   const { logAction } = useAuditLog(slug)
   const { entries: auditEntries, loading: auditLoading } = useAuditLogEntries(slug, 50)
-  const { userData } = useAuth()
+  const { userData, unenrollMfa } = useAuth()
   const addToast = useToast()
 
   // Member add mode
@@ -561,23 +561,69 @@ export default function SettingsPage() {
         />
       )}
 
-      {/* 2FA Setup */}
-      {userData && !userData.mfaEnrolled && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-          <TotpSetup
-            onComplete={() => addToast('2FA enabled successfully! 🔐')}
-          />
-        </div>
-      )}
-
-      {userData?.mfaEnrolled && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="text-2xl">🔐</div>
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Two-Factor Authentication</h3>
-              <p className="text-sm text-green-600 font-medium">Enabled — Authenticator App</p>
+      {/* 2FA Setup / Management */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
+        {userData && !userData.mfaEnrolled ? (
+          <>
+            <TotpSetup
+              onComplete={() => addToast('2FA enabled successfully!')}
+            />
+            {org?.settings?.requireMfa && (
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                Your organization requires 2FA. Please set it up to continue using the app.
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="text-2xl">🔐</div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Two-Factor Authentication</h3>
+                <p className="text-sm text-green-600 font-medium">Enabled — Authenticator App</p>
+              </div>
             </div>
+            {!org?.settings?.requireMfa && (
+              <button
+                onClick={async () => {
+                  if (!window.confirm('Disable two-factor authentication? Your account will be less secure.')) return
+                  try {
+                    await unenrollMfa()
+                    addToast('2FA disabled')
+                  } catch (err) {
+                    addToast('Failed to disable 2FA. You may need to sign out and back in first.', 'error')
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                Disable 2FA
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Require MFA — admin only */}
+      {isAdmin && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Require 2FA for All Members</h3>
+              <p className="text-xs text-slate-500 mt-0.5">When enabled, members without 2FA will be prompted to set it up before accessing the app.</p>
+            </div>
+            <label className="relative cursor-pointer">
+              <input
+                type="checkbox"
+                checked={org?.settings?.requireMfa || false}
+                onChange={async (e) => {
+                  await updateOrgSettings({ requireMfa: e.target.checked })
+                  addToast(e.target.checked ? '2FA is now required for all members' : '2FA requirement removed')
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-10 h-6 bg-slate-200 rounded-full peer-checked:bg-blue-600 transition-colors"></div>
+              <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform"></div>
+            </label>
           </div>
         </div>
       )}
