@@ -200,17 +200,31 @@ async function syncFedExForOrg(orgSlug, apiKey, secretKey) {
     .doc(orgSlug)
     .collection('shipments')
 
+  // Read org-level polling max days (default 60)
+  const orgDoc = await firestore.collection('organizations').doc(orgSlug).get()
+  const maxPollingDays = orgDoc.exists ? (orgDoc.data()?.settings?.maxPollingDays ?? 60) : 60
+  const cutoffDate = new Date(Date.now() - maxPollingDays * 24 * 60 * 60 * 1000)
+
   // Get all FedEx shipments that are NOT delivered (active ones to check)
   const snap = await shipmentsRef
     .where('carrier', '==', 'fedex')
     .where('status', 'in', ['pending', 'shipped', 'in_transit', 'exception'])
     .get()
 
-  if (snap.empty) return { updated: 0, checked: 0, apiCalls: 0 }
+  if (snap.empty) return { updated: 0, checked: 0, apiCalls: 0, skippedStale: 0 }
+
+  // Filter out shipments older than maxPollingDays
+  let skippedStale = 0
+  const freshDocs = snap.docs.filter((d) => {
+    const data = d.data()
+    const createdAt = data.createdAt?.toDate?.() || (data.createdAt?._seconds ? new Date(data.createdAt._seconds * 1000) : null)
+    if (createdAt && createdAt < cutoffDate) { skippedStale++; return false }
+    return true
+  })
 
   // Build a list of docs with tracking numbers
-  const docsWithTracking = snap.docs.filter((d) => d.data().trackingNumber)
-  if (docsWithTracking.length === 0) return { updated: 0, checked: 0, apiCalls: 0 }
+  const docsWithTracking = freshDocs.filter((d) => d.data().trackingNumber)
+  if (docsWithTracking.length === 0) return { updated: 0, checked: 0, apiCalls: 0, skippedStale }
 
   // Dedupe: group all docs by tracking number so each number is polled only once
   const byTracking = new Map()
@@ -220,7 +234,7 @@ async function syncFedExForOrg(orgSlug, apiKey, secretKey) {
     byTracking.get(tn).push(shipDoc)
   }
   const uniqueTrackingNumbers = [...byTracking.keys()]
-  console.log(`FedEx sync for ${orgSlug}: ${docsWithTracking.length} docs, ${uniqueTrackingNumbers.length} unique tracking numbers`)
+  console.log(`FedEx sync for ${orgSlug}: ${docsWithTracking.length} docs (${skippedStale} stale skipped), ${uniqueTrackingNumbers.length} unique tracking numbers, maxPollingDays=${maxPollingDays}`)
 
   const token = await getFedExToken(apiKey, secretKey)
   let updated = 0
@@ -295,8 +309,8 @@ async function syncFedExForOrg(orgSlug, apiKey, secretKey) {
     }
   }
 
-  console.log(`FedEx sync for ${orgSlug}: ${updated}/${docsWithTracking.length} docs updated, ${apiCalls} API calls (${uniqueTrackingNumbers.length} unique TNs)`)
-  return { updated, checked: docsWithTracking.length, apiCalls }
+  console.log(`FedEx sync for ${orgSlug}: ${updated}/${docsWithTracking.length} docs updated, ${apiCalls} API calls (${uniqueTrackingNumbers.length} unique TNs), ${skippedStale} stale skipped`)
+  return { updated, checked: docsWithTracking.length, apiCalls, skippedStale }
 }
 
 /**
@@ -509,15 +523,29 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
     .doc(orgSlug)
     .collection('shipments')
 
+  // Read org-level polling max days (default 60)
+  const orgDoc = await firestore.collection('organizations').doc(orgSlug).get()
+  const maxPollingDays = orgDoc.exists ? (orgDoc.data()?.settings?.maxPollingDays ?? 60) : 60
+  const cutoffDate = new Date(Date.now() - maxPollingDays * 24 * 60 * 60 * 1000)
+
   const snap = await shipmentsRef
     .where('carrier', '==', 'ups')
     .where('status', 'in', ['pending', 'shipped', 'in_transit', 'exception'])
     .get()
 
-  if (snap.empty) return { updated: 0, checked: 0, apiCalls: 0 }
+  if (snap.empty) return { updated: 0, checked: 0, apiCalls: 0, skippedStale: 0 }
 
-  const docsWithTracking = snap.docs.filter((d) => d.data().trackingNumber)
-  if (docsWithTracking.length === 0) return { updated: 0, checked: 0, apiCalls: 0 }
+  // Filter out shipments older than maxPollingDays
+  let skippedStale = 0
+  const freshDocs = snap.docs.filter((d) => {
+    const data = d.data()
+    const createdAt = data.createdAt?.toDate?.() || (data.createdAt?._seconds ? new Date(data.createdAt._seconds * 1000) : null)
+    if (createdAt && createdAt < cutoffDate) { skippedStale++; return false }
+    return true
+  })
+
+  const docsWithTracking = freshDocs.filter((d) => d.data().trackingNumber)
+  if (docsWithTracking.length === 0) return { updated: 0, checked: 0, apiCalls: 0, skippedStale }
 
   // Dedupe: group all docs by tracking number so each number is polled only once
   const byTracking = new Map()
@@ -527,7 +555,7 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
     byTracking.get(tn).push(shipDoc)
   }
   const uniqueTrackingNumbers = [...byTracking.keys()]
-  console.log(`UPS sync for ${orgSlug}: ${docsWithTracking.length} docs, ${uniqueTrackingNumbers.length} unique tracking numbers`)
+  console.log(`UPS sync for ${orgSlug}: ${docsWithTracking.length} docs (${skippedStale} stale skipped), ${uniqueTrackingNumbers.length} unique tracking numbers, maxPollingDays=${maxPollingDays}`)
 
   const token = await getUpsToken(clientId, clientSecret)
   let updated = 0
@@ -600,8 +628,8 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
     updated += slice.length
   }
 
-  console.log(`UPS sync for ${orgSlug}: ${updated}/${docsWithTracking.length} docs updated, ${apiCalls} API calls (${uniqueTrackingNumbers.length} unique TNs)`)
-  return { updated, checked: docsWithTracking.length, apiCalls }
+  console.log(`UPS sync for ${orgSlug}: ${updated}/${docsWithTracking.length} docs updated, ${apiCalls} API calls (${uniqueTrackingNumbers.length} unique TNs), ${skippedStale} stale skipped`)
+  return { updated, checked: docsWithTracking.length, apiCalls, skippedStale }
 }
 
 /**

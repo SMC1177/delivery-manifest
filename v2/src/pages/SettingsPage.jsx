@@ -662,6 +662,30 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Tracking Polling Settings */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
+        <h2 className="text-lg font-semibold text-slate-900 mb-2">Tracking Polling</h2>
+        <p className="text-sm text-slate-500 mb-4">
+          Shipments older than this limit won't be checked for status updates from FedEx/UPS. Reduces API calls for large archives.
+        </p>
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-slate-700">Max polling age (days):</label>
+          <input
+            type="number"
+            min="7"
+            max="365"
+            value={org?.settings?.maxPollingDays ?? 60}
+            onChange={async (e) => {
+              const val = Math.max(7, Math.min(365, parseInt(e.target.value) || 60))
+              await updateOrgSettings({ maxPollingDays: val })
+              addToast(`Polling max set to ${val} days`)
+            }}
+            className="w-24 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+          <span className="text-xs text-slate-400">Default: 60 days</span>
+        </div>
+      </div>
+
       {/* Scrub Confirmation Modal */}
       {scrubModal && (
         <ScrubConfirmModal
