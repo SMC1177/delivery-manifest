@@ -41,7 +41,7 @@ const FUZZY_RULES = [
   // carrier
   [/delivery\s*method|carrier|ship\s*method/i, 'carrier'],
   // date
-  [/date\s*filled|fill\s*date|dispensed\s*date|date\s*written|date\s*dispensed/i, 'date'],
+  [/date\s*filled|fill\s*date|dispensed\s*date|date\s*written|date\s*dispensed|date\s*shipped|ship\s*date/i, 'date'],
   // notes
   [/dispensed\s*drug|drug\s*description|drug\s*name/i, 'notes'],
 ]
@@ -273,5 +273,73 @@ export async function parseExcelFile(file, mapping, existingTrackingNumbers = []
     totalRows: allMapped.length,
     preview: shipments.slice(0, 5),
     unmappedColumns,
+  }
+}
+
+/**
+ * Re-map existing shipments by matching tracking numbers from a re-uploaded file.
+ * Returns a preview of changes before applying — no writes happen here.
+ *
+ * @param {File} file - The original export file
+ * @param {Record<string, string | string[]>} mapping - The column mapping to apply
+ * @param {Array<{id: string, trackingNumber: string}>} existingShipments - Current Firestore docs
+ * @returns {Promise<RemapPreview>}
+ */
+export async function previewRemap(file, mapping, existingShipments) {
+  const buffer = await file.arrayBuffer()
+  const workbook = XLSX.read(buffer, { type: 'array' })
+  const sheet = workbook.Sheets[workbook.SheetNames[0]]
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+
+  if (rows.length === 0) {
+    return { matched: [], unchangedCount: 0, unmatchedCount: 0, totalInFile: 0 }
+  }
+
+  const allMapped = applyMapping(rows, mapping)
+
+  // Index existing shipments by tracking number (case-insensitive, trimmed)
+  const existingByTracking = new Map()
+  for (const ship of existingShipments) {
+    if (ship.trackingNumber) {
+      existingByTracking.set(ship.trackingNumber.trim().toLowerCase(), ship)
+    }
+  }
+
+  const matched = []
+  let unchangedCount = 0
+  let unmatchedCount = 0
+
+  for (const parsed of allMapped) {
+    if (!parsed.trackingNumber) { unmatchedCount++; continue }
+
+    const key = parsed.trackingNumber.trim().toLowerCase()
+    const existing = existingByTracking.get(key)
+
+    if (!existing) { unmatchedCount++; continue }
+
+    // Diff: only include fields that actually changed
+    const changes = {}
+    for (const [field, newValue] of Object.entries(parsed)) {
+      if (field === 'trackingNumber') continue // don't diff the match key
+      const oldValue = existing[field] ?? ''
+      const newStr = String(newValue ?? '').trim()
+      const oldStr = String(oldValue ?? '').trim()
+      if (newStr && newStr !== oldStr) {
+        changes[field] = { oldValue: oldStr, newValue: newStr }
+      }
+    }
+
+    if (Object.keys(changes).length > 0) {
+      matched.push({ shipmentId: existing.id, trackingNumber: parsed.trackingNumber, changes })
+    } else {
+      unchangedCount++
+    }
+  }
+
+  return {
+    matched,
+    unchangedCount,
+    unmatchedCount,
+    totalInFile: allMapped.length,
   }
 }

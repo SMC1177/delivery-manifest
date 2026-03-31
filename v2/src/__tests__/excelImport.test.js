@@ -6,6 +6,7 @@ import {
   applyMapping,
   concatenateAddress,
   getUnmappedColumns,
+  previewRemap,
 } from '../utils/excelImport'
 
 // --- 1-3: autoMapColumns ---
@@ -215,5 +216,139 @@ describe('scrub behavior', () => {
     }
     const unmapped = getUnmappedColumns(allHeaders, mapping)
     expect(unmapped).toEqual(['Drug GPI', 'NDC', 'AWP Cost'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fuzzy Rules: Date Shipped / Ship Date
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Fuzzy Rules: Date Shipped / Ship Date', () => {
+  it('17. "Date Shipped" header maps to date', () => {
+    const result = autoMapColumns(['Date Shipped', 'Tracking Number'])
+    expect(result.date).toBe('Date Shipped')
+  })
+
+  it('18. "Ship Date" header maps to date', () => {
+    const result = autoMapColumns(['Ship Date', 'Tracking Number'])
+    expect(result.date).toBe('Ship Date')
+  })
+
+  it('19. "Date Filled" still maps to date (regression)', () => {
+    const result = autoMapColumns(['Date Filled', 'Tracking Number'])
+    expect(result.date).toBe('Date Filled')
+  })
+
+  it('20. "Date Written" still maps to date (regression)', () => {
+    const result = autoMapColumns(['Date Written', 'Tracking Number'])
+    expect(result.date).toBe('Date Written')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// previewRemap
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('previewRemap', () => {
+  // Helper to create a fake XLSX file from rows
+  async function makeFakeFile(headers, dataRows) {
+    const XLSX = await import('xlsx')
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+    return new File([buf], 'test.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  }
+
+  const mapping = {
+    patientName: 'Patient Name',
+    trackingNumber: 'Tracking Number',
+    date: 'Date Filled',
+    notes: 'Drug Description',
+  }
+
+  it('21. 5 rows in file, 3 match by tracking # → matched: 3, unmatched: 2', async () => {
+    const file = await makeFakeFile(
+      ['Patient Name', 'Tracking Number', 'Date Filled', 'Drug Description'],
+      [
+        ['John Doe', '1Z111', '2026-03-15', 'Amoxicillin'],
+        ['Jane Smith', '1Z222', '2026-03-16', 'Lisinopril'],
+        ['Bob Jones', '1Z333', '2026-03-17', 'Metformin'],
+        ['Alice Brown', '1Z444', '2026-03-18', 'Atorvastatin'],
+        ['Charlie White', '1Z555', '2026-03-19', 'Omeprazole'],
+      ]
+    )
+
+    const existing = [
+      { id: 'doc1', trackingNumber: '1Z111', patientName: 'John Doe', date: '', notes: '' },
+      { id: 'doc2', trackingNumber: '1Z222', patientName: 'Jane Smith', date: '', notes: '' },
+      { id: 'doc3', trackingNumber: '1Z333', patientName: 'Bob Jones', date: '', notes: '' },
+    ]
+
+    const result = await previewRemap(file, mapping, existing)
+    expect(result.totalInFile).toBe(5)
+    expect(result.matched.length).toBe(3) // all 3 have date/notes changes
+    expect(result.unmatchedCount).toBe(2)
+  })
+
+  it('22. Matched row with same data → unchangedCount, not in matched', async () => {
+    const file = await makeFakeFile(
+      ['Patient Name', 'Tracking Number', 'Date Filled', 'Drug Description'],
+      [['John Doe', '1Z111', '2026-03-15', 'Amoxicillin']]
+    )
+
+    // Existing doc must have all fields that applyMapping produces (carrier, rxNumbers, etc.)
+    // so the diff sees no changes
+    const existing = [
+      { id: 'doc1', trackingNumber: '1Z111', patientName: 'John Doe', date: '2026-03-15',
+        notes: 'Amoxicillin', carrier: 'ups', phone: '', dateOfBirth: '', address: '' },
+    ]
+
+    const result = await previewRemap(file, mapping, existing)
+    expect(result.matched.length).toBe(0) // no changes
+    expect(result.unchangedCount).toBe(1)
+  })
+
+  it('23. Matched row with different date → changes.date has old/new', async () => {
+    const file = await makeFakeFile(
+      ['Patient Name', 'Tracking Number', 'Date Filled', 'Drug Description'],
+      [['John Doe', '1Z111', '2026-03-15', 'Amoxicillin']]
+    )
+
+    const existing = [
+      { id: 'doc1', trackingNumber: '1Z111', patientName: 'John Doe', date: '', notes: 'Amoxicillin' },
+    ]
+
+    const result = await previewRemap(file, mapping, existing)
+    expect(result.matched.length).toBe(1)
+    expect(result.matched[0].changes.date).toEqual({ oldValue: '', newValue: '2026-03-15' })
+  })
+
+  it('24. Case-insensitive tracking match', async () => {
+    const file = await makeFakeFile(
+      ['Patient Name', 'Tracking Number', 'Date Filled', 'Drug Description'],
+      [['John Doe', '1Z123abc', '2026-03-15', 'Drug']]
+    )
+
+    const existing = [
+      { id: 'doc1', trackingNumber: '1z123ABC', patientName: 'John Doe', date: '', notes: '' },
+    ]
+
+    const result = await previewRemap(file, mapping, existing)
+    expect(result.matched.length).toBe(1)
+    expect(result.matched[0].shipmentId).toBe('doc1')
+  })
+
+  it('25. File with no tracking numbers → all unmatched', async () => {
+    const file = await makeFakeFile(
+      ['Patient Name', 'Tracking Number', 'Date Filled'],
+      [['John', '', '2026-03-15'], ['Jane', '', '2026-03-16']]
+    )
+
+    const existing = [{ id: 'doc1', trackingNumber: '1Z111' }]
+
+    const result = await previewRemap(file, mapping, existing)
+    expect(result.unmatchedCount).toBe(2)
+    expect(result.matched.length).toBe(0)
   })
 })

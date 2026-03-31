@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { collection, getDocs, doc, getDoc, deleteDoc } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc, deleteDoc, setDoc, writeBatch } from 'firebase/firestore'
 import { auth, db, storage } from '../lib/firebase'
 import { useOrganization } from '../hooks/useOrganization'
 import { useInvites } from '../hooks/useInvites'
@@ -12,6 +12,8 @@ import { formatCentralTime } from '../hooks/useShipments'
 import TotpSetup from '../components/TotpSetup'
 import ScrubConfirmModal from '../components/ScrubConfirmModal'
 import { scrubFieldFromShipments, SCRUBBABLE_FIELDS } from '../lib/scrubField'
+import ColumnMappingScreen from '../components/ColumnMappingScreen'
+import { readExcelHeaders, previewRemap } from '../utils/excelImport'
 
 function BrandingSection({ org, slug, updateOrgSettings, logAction, addToast }) {
   const logoInputRef = useRef(null)
@@ -179,6 +181,13 @@ export default function SettingsPage() {
   // Import mapping state
   const [importConfig, setImportConfig] = useState(null)
   const [importConfigLoading, setImportConfigLoading] = useState(true)
+  const [showMappingEditor, setShowMappingEditor] = useState(false)
+  const [mappingEditorMode, setMappingEditorMode] = useState('manual')
+  const [scanHeaders, setScanHeaders] = useState(null)
+  const [scanSampleRow, setScanSampleRow] = useState(null)
+  const [showRemapFlow, setShowRemapFlow] = useState(false)
+  const [remapPreview, setRemapPreview] = useState(null)
+  const [remapLoading, setRemapLoading] = useState(false)
 
   useEffect(() => {
     if (!slug) return
@@ -198,6 +207,83 @@ export default function SettingsPage() {
     } catch (err) {
       addToast('Failed to clear mapping: ' + err.message, 'error')
     }
+  }
+
+  async function handleSaveMapping(mapping) {
+    try {
+      const configRef = doc(db, 'organizations', slug, 'settings', 'importConfig')
+      await setDoc(configRef, { columnMappings: mapping }, { merge: true })
+      setImportConfig({ ...importConfig, columnMappings: mapping })
+      setShowMappingEditor(false)
+      setScanHeaders(null)
+      setScanSampleRow(null)
+      addToast('Mapping saved. Future imports will use this mapping.')
+    } catch (err) {
+      addToast('Failed to save mapping: ' + err.message, 'error')
+    }
+  }
+
+  async function handleScanFile() {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.xlsx,.xls,.csv'
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      try {
+        const { headers, sampleRow } = await readExcelHeaders(file)
+        setScanHeaders(headers)
+        setScanSampleRow(sampleRow)
+        setMappingEditorMode('dropdown')
+      } catch (err) {
+        addToast('Failed to read file: ' + err.message, 'error')
+      }
+    }
+    input.click()
+  }
+
+  async function handleRemapUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file || !importConfig?.columnMappings) return
+    setRemapLoading(true)
+    try {
+      const shipmentsSnap = await getDocs(collection(db, 'organizations', slug, 'shipments'))
+      const existing = shipmentsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const preview = await previewRemap(file, importConfig.columnMappings, existing)
+      setRemapPreview(preview)
+    } catch (err) {
+      addToast('Failed to preview remap: ' + err.message, 'error')
+    }
+    setRemapLoading(false)
+  }
+
+  async function handleApplyRemap() {
+    if (!remapPreview?.matched?.length) return
+    setRemapLoading(true)
+    try {
+      const toUpdate = remapPreview.matched.filter(m => Object.keys(m.changes).length > 0)
+      // Split into batches of 500
+      for (let i = 0; i < toUpdate.length; i += 500) {
+        const batch = writeBatch(db)
+        const chunk = toUpdate.slice(i, i + 500)
+        for (const item of chunk) {
+          const ref = doc(db, 'organizations', slug, 'shipments', item.shipmentId)
+          const updates = {}
+          for (const [field, { newValue }] of Object.entries(item.changes)) {
+            updates[field] = newValue
+          }
+          batch.update(ref, updates)
+        }
+        await batch.commit()
+      }
+      addToast(`${toUpdate.length} shipments updated`)
+      logAction('settings.remap_applied', { count: toUpdate.length, fileName: 'uploaded file' })
+      setRemapPreview(null)
+      setShowRemapFlow(false)
+    } catch (err) {
+      addToast('Failed to apply remap: ' + err.message, 'error')
+    }
+    setRemapLoading(false)
   }
 
   // Scrub modal state
@@ -862,31 +948,85 @@ export default function SettingsPage() {
             </div>
           ) : importConfig?.columnMappings ? (
             <div>
-              <p className="text-sm text-slate-600 mb-3">
-                Saved mapping ({Object.keys(importConfig.columnMappings).length} fields configured)
-              </p>
-              <div className="bg-slate-50 rounded-lg p-3 mb-4 text-sm space-y-1">
-                {Object.entries(importConfig.columnMappings).map(([field, col]) => (
-                  <div key={field} className="flex gap-2">
-                    <span className="font-medium text-slate-700 w-32">{field}:</span>
-                    <span className="text-slate-500">{Array.isArray(col) ? col.join(' + ') : col}</span>
+              {showMappingEditor ? (
+                <ColumnMappingScreen
+                  headers={scanHeaders || []}
+                  sampleRow={scanSampleRow || {}}
+                  initialMapping={importConfig.columnMappings}
+                  mode={mappingEditorMode}
+                  onSave={handleSaveMapping}
+                  onCancel={() => { setShowMappingEditor(false); setScanHeaders(null); setScanSampleRow(null); setMappingEditorMode('manual'); }}
+                  onScanFile={handleScanFile}
+                />
+              ) : showRemapFlow ? (
+                <div className="space-y-4">
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+                    Upload the original pharmacy export file to update existing shipments with your current column mapping.
+                    Shipments are matched by tracking number — no duplicates will be created.
                   </div>
-                ))}
-              </div>
-              <div className="flex gap-3">
-                <a
-                  href={`/${slug}/import`}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Edit Mapping
-                </a>
-                <button
-                  onClick={handleClearMapping}
-                  className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-                >
-                  Clear Mapping
-                </button>
-              </div>
+                  {!remapPreview ? (
+                    <div>
+                      <input type="file" accept=".xlsx,.xls,.csv" onChange={handleRemapUpload} disabled={remapLoading}
+                        className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                      {remapLoading && <div className="mt-2 text-sm text-slate-500">Analyzing file...</div>}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="bg-slate-50 rounded-lg p-4 text-sm space-y-1">
+                        <div><strong>{remapPreview.totalInFile}</strong> shipments in file</div>
+                        <div><strong>{remapPreview.matched.length}</strong> matched by tracking number</div>
+                        <div><strong>{remapPreview.matched.filter(m => Object.keys(m.changes).length > 0).length}</strong> have field changes</div>
+                        {remapPreview.unchangedCount > 0 && <div className="text-slate-400">{remapPreview.unchangedCount} unchanged</div>}
+                        {remapPreview.unmatchedCount > 0 && <div className="text-slate-400">{remapPreview.unmatchedCount} not in system (ignored)</div>}
+                      </div>
+                      <div className="flex gap-3">
+                        <button onClick={handleApplyRemap} disabled={remapLoading || remapPreview.matched.filter(m => Object.keys(m.changes).length > 0).length === 0}
+                          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                          {remapLoading ? 'Applying...' : 'Apply Changes'}
+                        </button>
+                        <button onClick={() => { setRemapPreview(null); setShowRemapFlow(false); }}
+                          className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-600 mb-3">
+                    Saved mapping ({Object.keys(importConfig.columnMappings).length} fields configured)
+                  </p>
+                  <div className="bg-slate-50 rounded-lg p-3 mb-4 text-sm space-y-1">
+                    {Object.entries(importConfig.columnMappings).map(([field, col]) => (
+                      <div key={field} className="flex gap-2">
+                        <span className="font-medium text-slate-700 w-32">{field}:</span>
+                        <span className="text-slate-500">{Array.isArray(col) ? col.join(' + ') : col}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => { setMappingEditorMode('manual'); setShowMappingEditor(true); }}
+                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Edit Mapping
+                    </button>
+                    <button
+                      onClick={() => setShowRemapFlow(true)}
+                      className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                    >
+                      Re-map Existing
+                    </button>
+                    <button
+                      onClick={handleClearMapping}
+                      className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                    >
+                      Clear Mapping
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <div>

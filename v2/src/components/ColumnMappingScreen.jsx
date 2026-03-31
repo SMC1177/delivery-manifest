@@ -3,7 +3,7 @@ import { UNIVERSAL_FIELDS, ADDRESS_SUBFIELDS } from '../utils/excelImport'
 
 const SKIP_VALUE = '__skip__'
 
-export default function ColumnMappingScreen({ headers, sampleRow, initialMapping, onSave, onCancel }) {
+export default function ColumnMappingScreen({ headers, sampleRow, initialMapping, onSave, onCancel, mode = 'dropdown', onScanFile }) {
   // Build initial state from auto-mapped or saved mapping
   const [fieldMap, setFieldMap] = useState(() => {
     const map = {}
@@ -38,7 +38,7 @@ export default function ColumnMappingScreen({ headers, sampleRow, initialMapping
   }, [fieldMap, addressMap])
 
   const mappedCount = usedHeaders.size
-  const unmappedCount = headers.length - mappedCount
+  const unmappedCount = headers ? headers.length - mappedCount : 0
 
   // Validation: required fields
   const missingRequired = UNIVERSAL_FIELDS
@@ -69,6 +69,18 @@ export default function ColumnMappingScreen({ headers, sampleRow, initialMapping
     onSave(mapping)
   }
 
+  function renderTextInput(value, onChange, placeholder) {
+    return (
+      <input
+        type="text"
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder || 'Type column name...'}
+        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      />
+    )
+  }
+
   function renderDropdown(value, onChange) {
     return (
       <select
@@ -86,6 +98,12 @@ export default function ColumnMappingScreen({ headers, sampleRow, initialMapping
     )
   }
 
+  function renderField(value, onChange, placeholder) {
+    return mode === 'manual'
+      ? renderTextInput(value, onChange, placeholder)
+      : renderDropdown(value, onChange)
+  }
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 max-w-3xl">
       <h2 className="text-lg font-semibold text-slate-900 mb-1">Map Your Spreadsheet Columns</h2>
@@ -101,7 +119,7 @@ export default function ColumnMappingScreen({ headers, sampleRow, initialMapping
               {required && <span className="text-red-500 ml-1">*</span>}
             </div>
             <div className="flex-1">
-              {renderDropdown(fieldMap[key], (v) => handleFieldChange(key, v), label)}
+              {renderField(fieldMap[key], (v) => handleFieldChange(key, v), label)}
             </div>
             {fieldMap[key] && sampleRow[fieldMap[key]] !== undefined && (
               <div className="text-xs text-slate-400 w-40 truncate">
@@ -127,7 +145,7 @@ export default function ColumnMappingScreen({ headers, sampleRow, initialMapping
             <div key={key} className="flex items-center gap-4 mb-2">
               <div className="w-40 shrink-0 text-sm text-slate-600">{label}</div>
               <div className="flex-1">
-                {renderDropdown(addressMap[key], (v) => handleAddressChange(key, v), label)}
+                {renderField(addressMap[key], (v) => handleAddressChange(key, v), label)}
               </div>
               {addressMap[key] && sampleRow[addressMap[key]] !== undefined && (
                 <div className="text-xs text-slate-400 w-40 truncate">
@@ -154,6 +172,14 @@ export default function ColumnMappingScreen({ headers, sampleRow, initialMapping
       )}
 
       <div className="mt-6 flex justify-end gap-3">
+        {mode === 'manual' && onScanFile && (
+          <button
+            onClick={onScanFile}
+            className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors mr-auto"
+          >
+            Scan from File
+          </button>
+        )}
         <button
           onClick={onCancel}
           className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
@@ -165,7 +191,7 @@ export default function ColumnMappingScreen({ headers, sampleRow, initialMapping
           disabled={missingRequired.length > 0}
           className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
-          Save Mapping &amp; Continue
+          {mode === 'manual' ? 'Save Mapping' : 'Save Mapping & Continue'}
         </button>
       </div>
     </div>
