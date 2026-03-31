@@ -12,8 +12,8 @@ export default function LandingPage() {
     )
   }
 
-  if (user && user.emailVerified && orgSlug) {
-    return <Navigate to={`/${orgSlug}/dashboard`} replace />
+  if (user && user.emailVerified) {
+    return <Navigate to={orgSlug ? `/${orgSlug}/dashboard` : '/setup'} replace />
   }
 
   return (

@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [resetSent, setResetSent] = useState(false)
   const [resetError, setResetError] = useState('')
 
-  const { login, completeMfaLogin, signInWithGoogle, signInWithMicrosoft } = useAuth()
+  const { login, completeMfaLogin, signInWithGoogle, signInWithMicrosoft, orgSlug } = useAuth()
   const navigate = useNavigate()
 
   async function handleForgotPassword() {
@@ -79,7 +79,7 @@ export default function LoginPage() {
 
       await clearLoginAttempts(email)
       // AuthContext loadUserData sets orgSlug; navigate after a tick
-      setTimeout(() => navigate('/'), 50)
+      setTimeout(() => navigate(orgSlug ? `/${orgSlug}/dashboard` : '/setup'), 50)
     } catch (err) {
       await recordFailedAttempt(email).catch(() => {})
       setError(getErrorMessage(err))
@@ -96,7 +96,7 @@ export default function LoginPage() {
     try {
       await completeMfaLogin(otpCode)
       await clearLoginAttempts(email).catch(() => {})
-      navigate('/')
+      navigate(orgSlug ? `/${orgSlug}/dashboard` : '/setup')
     } catch {
       setMfaError('Invalid verification code. Please try again.')
     } finally {
@@ -257,7 +257,7 @@ export default function LoginPage() {
               setLoading(true)
               try {
                 await signInWithGoogle()
-                setTimeout(() => navigate('/'), 50)
+                setTimeout(() => navigate(orgSlug ? `/${orgSlug}/dashboard` : '/setup'), 50)
               } catch (err) {
                 setError(err.message)
               } finally {
@@ -282,7 +282,7 @@ export default function LoginPage() {
               setLoading(true)
               try {
                 await signInWithMicrosoft()
-                setTimeout(() => navigate('/'), 50)
+                setTimeout(() => navigate(orgSlug ? `/${orgSlug}/dashboard` : '/setup'), 50)
               } catch (err) {
                 if (err.code !== 'auth/popup-closed-by-user') {
                   setError(err.message)
