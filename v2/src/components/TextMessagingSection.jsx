@@ -44,6 +44,36 @@ export default function TextMessagingSection({ slug, enabledFields, addToast, lo
   const { data, loading, save } = useTextMessagingSettings(slug)
   const [editingCreds, setEditingCreds] = useState(false)
   const [savingCreds, setSavingCreds] = useState(false)
+  const [webhookLoading, setWebhookLoading] = useState(false)
+  const [webhookError, setWebhookError] = useState(null)
+
+  async function handleRegisterWebhook() {
+    setWebhookLoading(true)
+    setWebhookError(null)
+    try {
+      const fn = httpsCallable(getFunctions(), 'registerRcWebhook')
+      await fn({ orgSlug: slug })
+      addToast?.('Webhook registered with RingCentral')
+    } catch (e) {
+      setWebhookError(e?.message || 'Registration failed')
+    } finally {
+      setWebhookLoading(false)
+    }
+  }
+
+  async function handleDeregisterWebhook() {
+    setWebhookLoading(true)
+    setWebhookError(null)
+    try {
+      const fn = httpsCallable(getFunctions(), 'deregisterRcWebhook')
+      await fn({ orgSlug: slug })
+      addToast?.('Webhook removed')
+    } catch (e) {
+      setWebhookError(e?.message || 'Removal failed')
+    } finally {
+      setWebhookLoading(false)
+    }
+  }
 
   const settings = data || {}
   const enabled = settings.enabled === true
@@ -237,30 +267,78 @@ export default function TextMessagingSection({ slug, enabledFields, addToast, lo
           <div className="mb-2 p-3 bg-slate-50 rounded-lg">
             <h3 className="text-sm font-medium text-slate-700 mb-1">Webhook Setup</h3>
             <p className="text-xs text-slate-600 mb-2">
-              In the RingCentral developer portal, subscribe to inbound SMS events with:
+              Register your webhook so RingCentral can notify the app when patients reply YES or STOP.
             </p>
-            <div className="text-xs space-y-1">
-              <div>
-                <div className="font-medium text-slate-700">URL:</div>
-                <code className="block bg-white p-1 rounded border break-all">
-                  {`https://us-central1-delivery-manifest-c3deb.cloudfunctions.net/ringcentralInbound?org=${slug}`}
-                </code>
-              </div>
-              <div>
-                <div className="font-medium text-slate-700">X-Webhook-Token header:</div>
-                <code className="block bg-white p-1 rounded border break-all">
-                  {settings.webhookToken || '(not generated)'}
-                </code>
+
+            {settings.webhookSubscriptionId ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-green-700">
+                  <span className="text-green-500">✓</span>
+                  <span>Registered with RingCentral</span>
+                  {settings.webhookExpiresAt && (
+                    <span className="text-xs text-slate-400">
+                      (renews automatically)
+                    </span>
+                  )}
+                </div>
                 <button
-                  onClick={regenerateToken}
-                  className="mt-1 text-xs underline text-blue-600"
+                  onClick={handleDeregisterWebhook}
+                  disabled={webhookLoading}
+                  className="px-3 py-1 text-xs rounded border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
                 >
-                  {settings.webhookToken ? 'Regenerate' : 'Generate'}
+                  {webhookLoading ? 'Removing…' : 'Remove Registration'}
                 </button>
               </div>
-              <div className="text-slate-500">
-                Subscribe to event: <code>/restapi/v1.0/account/~/extension/~/message-store/instant?type=SMS</code>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-xs text-slate-500 mb-1">
+                  {!settings.webhookToken
+                    ? 'Generate a webhook token first, then register.'
+                    : 'Not yet registered — click below to connect with RingCentral.'}
+                </div>
+                {!settings.webhookToken && (
+                  <button
+                    onClick={regenerateToken}
+                    className="px-3 py-1 text-xs rounded border border-slate-300 hover:bg-slate-50"
+                  >
+                    Generate Token
+                  </button>
+                )}
+                {settings.webhookToken && (
+                  <>
+                    <div className="text-xs">
+                      <span className="font-medium text-slate-700">Token: </span>
+                      <code className="bg-white px-1 py-0.5 rounded border text-slate-600 break-all">
+                        {settings.webhookToken}
+                      </code>
+                      <button
+                        onClick={regenerateToken}
+                        className="ml-2 text-xs underline text-blue-600"
+                      >
+                        Regenerate
+                      </button>
+                    </div>
+                    <button
+                      onClick={handleRegisterWebhook}
+                      disabled={webhookLoading || !credsConfigured}
+                      className="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {webhookLoading ? 'Registering…' : 'Register with RingCentral'}
+                    </button>
+                    {!credsConfigured && (
+                      <p className="text-xs text-amber-600">Configure credentials first.</p>
+                    )}
+                  </>
+                )}
               </div>
+            )}
+            {webhookError && (
+              <div className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                {webhookError}
+              </div>
+            )}
+            <div className="mt-2 text-xs text-slate-500">
+              Subscribe to event: <code>/restapi/v1.0/account/~/extension/~/message-store/instant?type=SMS</code>
             </div>
           </div>
         </>
