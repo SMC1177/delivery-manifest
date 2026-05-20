@@ -243,7 +243,7 @@ export default function TextMessagingSection({ slug, enabledFields, addToast, lo
               <div>
                 <div className="font-medium text-slate-700">URL:</div>
                 <code className="block bg-white p-1 rounded border break-all">
-                  {`https://YOUR-REGION-YOUR-PROJECT.cloudfunctions.net/ringcentralInbound?org=${slug}`}
+                  {`https://us-central1-delivery-manifest-c3deb.cloudfunctions.net/ringcentralInbound?org=${slug}`}
                 </code>
               </div>
               <div>
