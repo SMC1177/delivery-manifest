@@ -12,6 +12,11 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   addDoc: vi.fn(),
   serverTimestamp: vi.fn(),
+  doc: vi.fn(),
+  onSnapshot: vi.fn((q, cb) => {
+    cb({ exists: () => false, data: () => null })
+    return vi.fn()
+  }),
 }))
 
 vi.mock('../lib/firebase', () => ({
@@ -58,6 +63,10 @@ vi.mock('../hooks/useOrgSettings', () => ({
     settings: { enabledFields: ['carrier', 'address', 'notes'] },
     isFieldEnabled: (field) => ['carrier', 'address', 'notes'].includes(field),
   }),
+}))
+
+vi.mock('../hooks/useTextMessagingSettings', () => ({
+  useTextMessagingSettings: () => ({ data: null, loading: false, save: vi.fn() }),
 }))
 
 import DashboardPage from '../pages/DashboardPage'

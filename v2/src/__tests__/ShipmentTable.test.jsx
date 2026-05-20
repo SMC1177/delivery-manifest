@@ -24,6 +24,10 @@ vi.mock('../hooks/useOrgSettings', () => ({
   }),
 }))
 
+vi.mock('../hooks/useTextMessagingSettings', () => ({
+  useTextMessagingSettings: () => ({ data: null, loading: false, save: vi.fn() }),
+}))
+
 import ShipmentTable from '../components/ShipmentTable'
 
 function renderWithRouter(ui) {

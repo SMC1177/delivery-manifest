@@ -3,11 +3,17 @@ import { useParams } from 'react-router-dom'
 import { useOrgSettings } from '../hooks/useOrgSettings'
 import StatusBadge from './StatusBadge'
 import { getTrackingUrl, getCarrierName } from '../lib/carriers'
+import OptInDot from './OptInDot'
+import SendTextModal from './SendTextModal'
+import { useTextMessagingSettings } from '../hooks/useTextMessagingSettings'
 
 export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusChange, readOnly }) {
   const { slug } = useParams()
   const { isFieldEnabled } = useOrgSettings(slug)
   const [expandedGroups, setExpandedGroups] = useState(new Set())
+  const [smsModalShipment, setSmsModalShipment] = useState(null)
+  const { data: smsSettings } = useTextMessagingSettings(slug)
+  const smsEnabled = smsSettings?.enabled === true
 
   const toggleGroup = (trackingNumber) => {
     setExpandedGroups(prev => {
@@ -76,7 +82,19 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
     >
       <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{s.date || '\u2014'}</td>
       <td className={`px-4 py-3 font-medium text-slate-900 ${isChild ? 'pl-8' : ''}`}>
-        {s.patientName}
+        <span className="inline-flex items-center gap-1.5">
+          <OptInDot slug={slug} phone={s.phone} enabled={smsEnabled} />
+          <button
+            type="button"
+            onClick={() => smsEnabled && s.phone && setSmsModalShipment(s)}
+            className={smsEnabled && s.phone
+              ? 'text-blue-700 hover:underline cursor-pointer text-left'
+              : 'text-slate-900 cursor-default text-left'}
+            title={smsEnabled && s.phone ? 'Click to send text message' : ''}
+          >
+            {s.patientName}
+          </button>
+        </span>
         {groupHasChildren && !isChild && (
           <span className="ml-2 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
             +{childCount}
@@ -163,7 +181,21 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
     <div key={s.id} className={`bg-white border border-slate-200 rounded-lg p-4 ${isChild ? 'ml-4 border-l-2 border-l-blue-200' : ''}`}>
       <div className="flex items-start justify-between mb-2">
         <div>
-          <h3 className="font-medium text-slate-900">{s.patientName}</h3>
+          <h3 className="font-medium text-slate-900">
+            <span className="inline-flex items-center gap-1.5">
+              <OptInDot slug={slug} phone={s.phone} enabled={smsEnabled} />
+              <button
+                type="button"
+                onClick={() => smsEnabled && s.phone && setSmsModalShipment(s)}
+                className={smsEnabled && s.phone
+                  ? 'text-blue-700 hover:underline cursor-pointer text-left'
+                  : 'text-slate-900 cursor-default text-left'}
+                title={smsEnabled && s.phone ? 'Click to send text message' : ''}
+              >
+                {s.patientName}
+              </button>
+            </span>
+          </h3>
           {s.date && <p className="text-xs text-slate-400">{s.date}</p>}
         </div>
         <StatusBadge status={s.status} />
@@ -304,6 +336,14 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
           )
         })}
       </div>
+
+      {smsModalShipment && (
+        <SendTextModal
+          slug={slug}
+          shipment={smsModalShipment}
+          onClose={() => setSmsModalShipment(null)}
+        />
+      )}
     </>
   )
 }
