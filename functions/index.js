@@ -704,3 +704,5 @@ export const refreshUpsStatuses = onCall(
 export { sendSms } from './sms-send.js'
 export { ringcentralInbound } from './sms-inbound.js'
 export { saveRingCentralCreds } from './sms-save-creds.js'
+export { registerRcWebhook, deregisterRcWebhook } from './sms-webhook-register.js'
+export { renewRcWebhooks } from './sms-webhook-renew.js'
