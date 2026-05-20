@@ -702,3 +702,4 @@ export const refreshUpsStatuses = onCall(
 )
 
 export { sendSms } from './sms-send.js'
+export { ringcentralInbound } from './sms-inbound.js'
