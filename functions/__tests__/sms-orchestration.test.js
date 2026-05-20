@@ -55,6 +55,15 @@ vi.mock('firebase-functions/v2/https', () => ({
   },
 }))
 
+const _mockCreds = {
+  clientId: 'CID', clientSecret: 'CS', jwt: 'JWT',
+  server: 'https://platform.ringcentral.com',
+  fromNumber: '+12815550100',
+}
+vi.mock('../lib/rcCredentials.js', () => ({
+  getRingCentralCredsForOrg: vi.fn(async () => _mockCreds),
+}))
+
 beforeEach(() => {
   _clearTokenCache()
   vi.restoreAllMocks()
@@ -62,11 +71,10 @@ beforeEach(() => {
 
 const baseSettings = {
   enabled: true,
+  credsConfigured: true,
   optInPolicy: 'double_opt_in',
   dailyCap: 250,
   ringcentral: {
-    clientId: 'CID', clientSecret: 'CS', jwt: 'JWT',
-    server: 'https://platform.ringcentral.com',
     fromNumber: '+12815550100',
   },
   templates: {
