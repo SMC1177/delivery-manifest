@@ -3,6 +3,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { normalizePhone, maskPhone } from './lib/phoneNormalize.js'
 import { renderTemplate } from './sms-templates.js'
 import { sendRingCentralSms } from './ringcentral-sms.js'
+import { getRingCentralCredsForOrg } from './lib/rcCredentials.js'
 
 const OPT_IN_WORDS = new Set(['YES', 'Y', 'START'])
 const OPT_OUT_WORDS = new Set(['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END'])
@@ -87,28 +88,38 @@ export const ringcentralInbound = onRequest(async (req, res) => {
       timestamp: FieldValue.serverTimestamp(),
     })
     if (settings.autoReplyToNonKeyword && settings.templates?.nonKeywordRedirect) {
+      let autoReplyCreds
       try {
-        const orgSnap = await firestore.doc(`organizations/${orgSlug}`).get()
-        const org = orgSnap.data() || {}
-        const replyText = renderTemplate(settings.templates.nonKeywordRedirect, {
-          pharmacyName: org.name || orgSlug,
-          pharmacyPhone: org.contactPhone || '',
-        })
-        await sendRingCentralSms({
-          creds: settings.ringcentral,
-          from: settings.ringcentral.fromNumber,
-          to: phone,
-          text: replyText,
-        })
-        await auditRef.add({
-          action: 'sms.auto_reply_sent',
-          targetId: maskPhone(phone),
-          details: { reason: 'non_keyword' },
-          timestamp: FieldValue.serverTimestamp(),
-        })
+        autoReplyCreds = await getRingCentralCredsForOrg(orgSlug)
       } catch (e) {
-        // Auto-reply failure is non-fatal — still 200 the webhook
-        console.error('Auto-reply (non_keyword) failed:', e.message)
+        console.error('Auto-reply skipped — could not load RC creds:', e.message)
+        // skip the auto-reply for this path; do not throw — the inbound handler must still 200 to RC
+        // continue to next logic block as if auto-reply were disabled
+      }
+      if (autoReplyCreds) {
+        try {
+          const orgSnap = await firestore.doc(`organizations/${orgSlug}`).get()
+          const org = orgSnap.data() || {}
+          const replyText = renderTemplate(settings.templates.nonKeywordRedirect, {
+            pharmacyName: org.name || orgSlug,
+            pharmacyPhone: org.contactPhone || '',
+          })
+          await sendRingCentralSms({
+            creds: autoReplyCreds,
+            from: autoReplyCreds.fromNumber,
+            to: phone,
+            text: replyText,
+          })
+          await auditRef.add({
+            action: 'sms.auto_reply_sent',
+            targetId: maskPhone(phone),
+            details: { reason: 'non_keyword' },
+            timestamp: FieldValue.serverTimestamp(),
+          })
+        } catch (e) {
+          // Auto-reply failure is non-fatal — still 200 the webhook
+          console.error('Auto-reply (non_keyword) failed:', e.message)
+        }
       }
     }
     res.status(200).send('OK')
@@ -137,27 +148,37 @@ export const ringcentralInbound = onRequest(async (req, res) => {
     const templateKey = optIn ? 'optInConfirm' : 'optOutConfirm'
     const template = settings.templates?.[templateKey]
     if (template) {
+      let autoReplyCreds
       try {
-        const orgSnap = await firestore.doc(`organizations/${orgSlug}`).get()
-        const org = orgSnap.data() || {}
-        const replyText = renderTemplate(template, {
-          pharmacyName: org.name || orgSlug,
-          pharmacyPhone: org.contactPhone || '',
-        })
-        await sendRingCentralSms({
-          creds: settings.ringcentral,
-          from: settings.ringcentral.fromNumber,
-          to: phone,
-          text: replyText,
-        })
-        await auditRef.add({
-          action: 'sms.auto_reply_sent',
-          targetId: maskPhone(phone),
-          details: { reason: optIn ? 'opt_in_confirm' : 'opt_out_confirm' },
-          timestamp: FieldValue.serverTimestamp(),
-        })
+        autoReplyCreds = await getRingCentralCredsForOrg(orgSlug)
       } catch (e) {
-        console.error('Auto-reply (yes/stop) failed:', e.message)
+        console.error('Auto-reply skipped — could not load RC creds:', e.message)
+        // skip the auto-reply for this path; do not throw — the inbound handler must still 200 to RC
+        // continue to next logic block as if auto-reply were disabled
+      }
+      if (autoReplyCreds) {
+        try {
+          const orgSnap = await firestore.doc(`organizations/${orgSlug}`).get()
+          const org = orgSnap.data() || {}
+          const replyText = renderTemplate(template, {
+            pharmacyName: org.name || orgSlug,
+            pharmacyPhone: org.contactPhone || '',
+          })
+          await sendRingCentralSms({
+            creds: autoReplyCreds,
+            from: autoReplyCreds.fromNumber,
+            to: phone,
+            text: replyText,
+          })
+          await auditRef.add({
+            action: 'sms.auto_reply_sent',
+            targetId: maskPhone(phone),
+            details: { reason: optIn ? 'opt_in_confirm' : 'opt_out_confirm' },
+            timestamp: FieldValue.serverTimestamp(),
+          })
+        } catch (e) {
+          console.error('Auto-reply (yes/stop) failed:', e.message)
+        }
       }
     }
   }
