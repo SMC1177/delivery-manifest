@@ -40,7 +40,7 @@ export function checkSendPreconditions({ auth, memberRole, settings, org, shipme
   if (!settings || settings.enabled !== true) return fail(GATE_ERRORS.MESSAGING_DISABLED)
 
   const rc = settings.ringcentral || {}
-  if (!rc.clientId || !rc.clientSecret || !rc.jwt || !rc.fromNumber) {
+  if (settings.credsConfigured !== true || !rc.fromNumber) {
     return fail(GATE_ERRORS.CREDS_MISSING)
   }
 

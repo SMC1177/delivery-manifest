@@ -3,7 +3,8 @@ import { checkSendPreconditions, checkOptInPolicy, GATE_ERRORS } from '../sms-ga
 
 const baseSettings = {
   enabled: true,
-  ringcentral: { clientId: 'a', clientSecret: 'b', jwt: 'c', fromNumber: '+12815550123' },
+  credsConfigured: true,
+  ringcentral: { fromNumber: '+12815550123' },
   optInPolicy: 'double_opt_in',
 }
 const baseOrg = { settings: { enabledFields: ['phone'] } }
@@ -44,10 +45,19 @@ describe('checkSendPreconditions', () => {
     expect(r.code).toBe(GATE_ERRORS.MESSAGING_DISABLED)
   })
 
-  it('fails when RC credentials incomplete', () => {
+  it('fails when credsConfigured is false', () => {
     const r = checkSendPreconditions({
       auth: { uid: 'u1' }, memberRole: 'staff',
-      settings: { ...baseSettings, ringcentral: { clientId: 'a' } },
+      settings: { ...baseSettings, credsConfigured: false },
+      org: baseOrg, shipment: baseShipment,
+    })
+    expect(r.code).toBe(GATE_ERRORS.CREDS_MISSING)
+  })
+
+  it('fails when fromNumber is missing even if credsConfigured', () => {
+    const r = checkSendPreconditions({
+      auth: { uid: 'u1' }, memberRole: 'staff',
+      settings: { ...baseSettings, ringcentral: {} },
       org: baseOrg, shipment: baseShipment,
     })
     expect(r.code).toBe(GATE_ERRORS.CREDS_MISSING)

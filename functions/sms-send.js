@@ -5,6 +5,7 @@ import { renderTemplate, validateOptInInvite } from './sms-templates.js'
 import { checkAndIncrementRateLimit } from './sms-rate-limit.js'
 import { checkSendPreconditions, checkOptInPolicy, GATE_ERRORS, userMessageFor } from './sms-gates.js'
 import { sendRingCentralSms } from './ringcentral-sms.js'
+import { getRingCentralCredsForOrg } from './lib/rcCredentials.js'
 
 export const sendSms = onCall(async (request) => {
   const firestore = getFirestore()
@@ -100,11 +101,18 @@ export const sendSms = onCall(async (request) => {
   }
 
   // SEND
+  let creds
+  try {
+    creds = await getRingCentralCredsForOrg(orgSlug)
+  } catch (e) {
+    throw new HttpsError('failed-precondition', `Could not load RingCentral credentials: ${e.message}`)
+  }
+
   let messageId
   try {
     const result = await sendRingCentralSms({
-      creds: settings.ringcentral,
-      from: settings.ringcentral.fromNumber,
+      creds,
+      from: creds.fromNumber,
       to: phone,
       text: body,
     })
