@@ -14,6 +14,7 @@ import ScrubConfirmModal from '../components/ScrubConfirmModal'
 import { scrubFieldFromShipments, SCRUBBABLE_FIELDS } from '../lib/scrubField'
 import ColumnMappingScreen from '../components/ColumnMappingScreen'
 import { readExcelHeaders, previewRemap } from '../utils/excelImport'
+import TextMessagingSection from '../components/TextMessagingSection'
 
 function BrandingSection({ org, slug, updateOrgSettings, logAction, addToast }) {
   const logoInputRef = useRef(null)
@@ -521,6 +522,16 @@ export default function SettingsPage() {
     'member.removed': 'Removed member',
     'settings.changed': 'Changed settings',
     'settings.field_scrubbed': 'Scrubbed field data',
+    'sms.settings_changed': 'Changed text messaging settings',
+    'sms.invite_sent': 'Sent SMS opt-in invite',
+    'sms.message_sent': 'Sent SMS message',
+    'sms.send_failed': 'SMS send failed',
+    'sms.invite_response': 'Received opt-in reply',
+    'sms.non_keyword_inbound': 'Received non-keyword SMS',
+    'sms.auto_reply_sent': 'Sent SMS auto-reply',
+    'sms.test_message_sent': 'Sent SMS test message',
+    'sms.rate_limit_hit': 'SMS daily cap reached',
+    'sms.webhook_token_regenerated': 'Regenerated webhook token',
   }
 
   return (
@@ -661,6 +672,18 @@ export default function SettingsPage() {
           ))}
         </div>
       </div>
+
+      {/* Text Messaging */}
+      {isAdmin && (
+        <TextMessagingSection
+          slug={slug}
+          org={org}
+          enabledFields={enabledFields}
+          addToast={addToast}
+          logAction={logAction}
+          currentUid={userData?.uid || ''}
+        />
+      )}
 
       {/* Shipment Fields */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
