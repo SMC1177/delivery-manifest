@@ -17,6 +17,14 @@ function classifyBody(body) {
 }
 
 export const ringcentralInbound = onRequest(async (req, res) => {
+  // RC webhook validation handshake
+  const validationToken = req.headers?.['validation-token'] || req.get?.('validation-token')
+  if (validationToken) {
+    res.set('Validation-Token', validationToken)
+    res.status(200).send('OK')
+    return
+  }
+
   if (req.method !== 'POST') {
     res.status(405).send('Method not allowed')
     return
@@ -36,9 +44,9 @@ export const ringcentralInbound = onRequest(async (req, res) => {
   }
   const settings = settingsSnap.data()
 
-  const providedToken = req.get('X-Webhook-Token')
-  if (!settings.webhookToken || providedToken !== settings.webhookToken) {
-    res.status(401).send('Invalid webhook token')
+  const token = req.get('x-webhook-token') || req.query.t
+  if (!token || token !== settings.webhookToken) {
+    res.status(401).send('Unauthorized')
     return
   }
 
