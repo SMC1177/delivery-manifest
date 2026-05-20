@@ -21,6 +21,15 @@ vi.mock('firebase-functions/v2/https', () => ({
   HttpsError: class extends Error { constructor(c, m, d) { super(m); this.code = c; this.details = d } },
 }))
 
+const _mockCreds = {
+  clientId: 'CID', clientSecret: 'CS', jwt: 'JWT',
+  server: 'https://platform.ringcentral.com',
+  fromNumber: '+12815550100',
+}
+vi.mock('../lib/rcCredentials.js', () => ({
+  getRingCentralCredsForOrg: vi.fn(async () => _mockCreds),
+}))
+
 beforeEach(() => { _clearTokenCache(); vi.restoreAllMocks() })
 
 describe('field-toggle seam: phone field off → SMS send refused with correct gate', () => {
@@ -28,9 +37,9 @@ describe('field-toggle seam: phone field off → SMS send refused with correct g
     const docs = {
       'organizations/acme': { name: 'Acme', settings: { enabledFields: ['notes'] } }, // phone OFF
       'organizations/acme/settings/textMessaging': {
-        enabled: true, optInPolicy: 'double_opt_in', dailyCap: 250,
-        ringcentral: { clientId: 'C', clientSecret: 'S', jwt: 'J', server: 'X', fromNumber: '+1' },
-        templates: { optInInvite: 'YES STOP' },
+        enabled: true, credsConfigured: true, optInPolicy: 'double_opt_in', dailyCap: 250,
+        ringcentral: { fromNumber: '+12815550100' },
+        templates: { optInInvite: 'YES STOP from {{pharmacyName}}' },
       },
       'organizations/acme/members/u1': { role: 'staff' },
       'organizations/acme/shipments/s1': { phone: '+12815550200' },
@@ -51,8 +60,8 @@ describe('field-toggle seam: phone field off → SMS send refused with correct g
     const docs = {
       'organizations/acme': { name: 'Acme', settings: { enabledFields: ['phone'] } }, // phone ON
       'organizations/acme/settings/textMessaging': {
-        enabled: true, optInPolicy: 'double_opt_in', dailyCap: 250,
-        ringcentral: { clientId: 'C', clientSecret: 'S', jwt: 'J', server: 'https://x', fromNumber: '+12815550100' },
+        enabled: true, credsConfigured: true, optInPolicy: 'double_opt_in', dailyCap: 250,
+        ringcentral: { fromNumber: '+12815550100' },
         templates: { optInInvite: 'Hi from {{pharmacyName}}! YES STOP' },
       },
       'organizations/acme/members/u1': { role: 'staff' },
