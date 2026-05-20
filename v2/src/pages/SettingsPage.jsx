@@ -601,7 +601,7 @@ export default function SettingsPage() {
                   try {
                     await unenrollMfa()
                     addToast('2FA disabled')
-                  } catch (err) {
+                  } catch {
                     addToast('Failed to disable 2FA. You may need to sign out and back in first.', 'error')
                   }
                 }}

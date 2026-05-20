@@ -8,6 +8,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
+const __dirname = join(fileURLToPath(import.meta.url), '..')
 
 // ─── Source-level seam tests (verify code structure) ────────────────────────
 

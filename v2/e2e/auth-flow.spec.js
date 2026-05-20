@@ -37,7 +37,6 @@ test.describe('Auth Flow — Redirect Chain & Page Rendering', () => {
   test('register page renders name, email, password fields', async ({ page }) => {
     await page.goto('/register')
     await page.waitForTimeout(1000)
-    const nameInput = page.locator('input[type="text"], input[name="name"], input[placeholder*="name" i]').first()
     const emailInput = page.locator('input[type="email"]').first()
     const passwordInput = page.locator('input[type="password"]').first()
     // At least email and password should be visible

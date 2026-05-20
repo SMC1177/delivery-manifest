@@ -75,7 +75,7 @@ export default function DashboardPage() {
         setClearPassword('')
         setClearError('')
         setShowClearPrompt(true)
-      } catch (err) {
+      } catch {
         addToast('Failed to look up org owner', 'error')
       }
     }

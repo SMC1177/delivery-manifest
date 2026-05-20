@@ -5,7 +5,7 @@
  * number collapse into one row with expand/collapse and merged Rx display.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 vi.mock('firebase/firestore', () => ({
