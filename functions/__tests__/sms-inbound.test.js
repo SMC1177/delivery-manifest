@@ -25,6 +25,15 @@ vi.mock('firebase-functions/v2/https', () => ({
   onRequest: (h) => h,
 }))
 
+const _mockCreds = {
+  clientId: 'CID', clientSecret: 'CS', jwt: 'JWT',
+  server: 'https://platform.ringcentral.com',
+  fromNumber: '+12815550100',
+}
+vi.mock('../lib/rcCredentials.js', () => ({
+  getRingCentralCredsForOrg: vi.fn(async () => _mockCreds),
+}))
+
 beforeEach(() => { _clearTokenCache(); vi.restoreAllMocks() })
 
 function makeReq({ method = 'POST', query = { org: 'acme' }, headers = { 'x-webhook-token': 'TOK' }, body = {} } = {}) {
@@ -43,7 +52,8 @@ function makeRes() {
 const baseSettings = {
   enabled: true,
   webhookToken: 'TOK',
-  ringcentral: { clientId: 'C', clientSecret: 'S', jwt: 'J', server: 'https://x', fromNumber: '+12815550100' },
+  credsConfigured: true,
+  ringcentral: { fromNumber: '+12815550100' },
   templates: {
     optInConfirm: 'You are subscribed to {{pharmacyName}}.',
     optOutConfirm: 'You are unsubscribed from {{pharmacyName}}.',
