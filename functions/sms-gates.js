@@ -39,13 +39,13 @@ export function checkSendPreconditions({ auth, memberRole, settings, org, shipme
   if (memberRole !== 'admin' && memberRole !== 'staff') return fail(GATE_ERRORS.FORBIDDEN_ROLE)
   if (!settings || settings.enabled !== true) return fail(GATE_ERRORS.MESSAGING_DISABLED)
 
+  const enabledFields = org?.settings?.enabledFields || []
+  if (!enabledFields.includes('phone')) return fail(GATE_ERRORS.PHONE_FIELD_DISABLED)
+
   const rc = settings.ringcentral || {}
   if (settings.credsConfigured !== true || !rc.fromNumber) {
     return fail(GATE_ERRORS.CREDS_MISSING)
   }
-
-  const enabledFields = org?.settings?.enabledFields || []
-  if (!enabledFields.includes('phone')) return fail(GATE_ERRORS.PHONE_FIELD_DISABLED)
 
   if (!shipment?.phone || String(shipment.phone).trim() === '') return fail(GATE_ERRORS.SHIPMENT_NO_PHONE)
 
