@@ -154,7 +154,7 @@ export const sendSms = onCall(async (request) => {
   await firestore.collection(`organizations/${orgSlug}/auditLog`).add({
     action,
     targetId: maskPhone(phone),
-    details: { shipmentId, templateKey, templateBody: body, ringcentralMessageId: messageId },
+    details: { shipmentId, templateKey, ringcentralMessageId: messageId },
     userId: request.auth.uid,
     timestamp: FieldValue.serverTimestamp(),
   })
