@@ -487,9 +487,19 @@ export const trackUps = onCall(
         return { found: false, trackingNumber, status: null, details: null }
       }
 
-      const currentStatus = pkg.currentStatus || pkg.activity?.[0]?.status
-      const statusType = currentStatus?.type || null
-      const mappedStatus = mapUpsStatus(statusType)
+      const sortedActivity = [...(pkg.activity || [])].sort((a, b) => {
+        const da = `${a.date || ''}${a.time || ''}`
+        const db = `${b.date || ''}${b.time || ''}`
+        return db.localeCompare(da)
+      })
+      const latestActivity = sortedActivity[0]
+      const currentStatus = pkg.currentStatus || latestActivity?.status
+      const statusContext = {
+        type: currentStatus?.type || null,
+        code: currentStatus?.code || null,
+        description: currentStatus?.description || latestActivity?.description || null,
+      }
+      const mappedStatus = mapUpsStatus(statusContext)
 
       const deliveryDate = pkg.deliveryDate?.[0]
       const deliveryTime = pkg.deliveryTime?.endTime || null
@@ -497,10 +507,10 @@ export const trackUps = onCall(
       return {
         found: true,
         trackingNumber,
-        status: currentStatus?.description || 'Unknown',
-        statusType,
+        status: statusContext.description || 'Unknown',
+        statusCode: statusContext.code,
         mappedStatus,
-        description: currentStatus?.description || null,
+        description: statusContext.description || null,
         deliveryDate: deliveryDate?.date || null,
         deliveryTime,
         shipperCity: data?.trackResponse?.shipment?.[0]?.shipperAddress?.city || null,
@@ -528,11 +538,17 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
   const maxPollingDays = orgDoc.exists ? (orgDoc.data()?.settings?.maxPollingDays ?? 60) : 60
   const cutoffDate = new Date(Date.now() - maxPollingDays * 24 * 60 * 60 * 1000)
 
-  const snap = await shipmentsRef
-    .where('carrier', '==', 'ups')
-    .where('status', 'in', ['pending', 'shipped', 'in_transit', 'exception'])
-    .get()
+  // Query both lowercase 'ups' and legacy uppercase 'UPS' — old records may not be normalized
+  const [snapLower, snapUpper] = await Promise.all([
+    shipmentsRef.where('carrier', '==', 'ups').where('status', 'in', ['pending', 'shipped', 'in_transit', 'exception']).get(),
+    shipmentsRef.where('carrier', '==', 'UPS').where('status', 'in', ['pending', 'shipped', 'in_transit', 'exception']).get(),
+  ])
+  const allDocs = [...snapLower.docs, ...snapUpper.docs]
+  if (snapUpper.docs.length > 0) {
+    console.log(`UPS sync for ${orgSlug}: found ${snapUpper.docs.length} docs with legacy uppercase carrier 'UPS'`)
+  }
 
+  const snap = { empty: allDocs.length === 0, docs: allDocs }
   if (snap.empty) return { updated: 0, checked: 0, apiCalls: 0, skippedStale: 0 }
 
   // Filter out shipments older than maxPollingDays
@@ -575,33 +591,68 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
         const pkg = data?.trackResponse?.shipment?.[0]?.package?.[0]
         if (!pkg) return null
 
-        const currentStatus = pkg.currentStatus || pkg.activity?.[0]?.status
-        const statusType = currentStatus?.type || null
-        const newStatus = mapUpsStatus(statusType)
+        // Sort activity newest-first by UPS date+time strings (YYYYMMDD + HHMMSS)
+        const sortedActivity = [...(pkg.activity || [])].sort((a, b) => {
+          const da = `${a.date || ''}${a.time || ''}`
+          const db = `${b.date || ''}${b.time || ''}`
+          return db.localeCompare(da)
+        })
+        const latestActivity = sortedActivity[0]
+        const currentStatus = pkg.currentStatus || latestActivity?.status
+        const statusContext = {
+          type: currentStatus?.type || null,
+          code: currentStatus?.code || null,
+          description: currentStatus?.description || latestActivity?.description || null,
+        }
+        if (!statusContext.type && !statusContext.code && !statusContext.description) {
+          console.warn(`UPS sync: no status context for TN ${tn}, currentStatus=${JSON.stringify(currentStatus)}`)
+        }
+        const newStatus = mapUpsStatus(statusContext)
 
-        return { tn, newStatus, currentStatus, statusType }
+        return { tn, newStatus, currentStatus: statusContext, latestActivity }
       })
     )
 
     for (const result of results) {
       if (result.status !== 'fulfilled' || !result.value) continue
-      const { tn, newStatus, currentStatus, statusType } = result.value
-      if (!newStatus) continue
+      const { tn, newStatus, currentStatus, latestActivity } = result.value
+      if (!newStatus) {
+        console.warn(`UPS sync: no mapped status for TN ${tn} (desc="${currentStatus?.description}") — skipping`)
+        continue
+      }
+
+      // Lifecycle rank: never allow a lower-rank status to overwrite a higher-rank one
+      const statusRank = { pending: 0, shipped: 1, in_transit: 2, exception: 3, delivered: 4 }
 
       // Apply to every doc with this tracking number
       for (const shipDoc of (byTracking.get(tn) || [])) {
         const shipment = shipDoc.data()
         if (newStatus === shipment.status) continue
+        const currentRank = statusRank[shipment.status] ?? -1
+        const newRank = statusRank[newStatus] ?? -1
+        if (newRank < currentRank) {
+          console.warn(`UPS sync: TN ${tn} — refusing to downgrade ${shipment.status}(${currentRank}) → ${newStatus}(${newRank})`)
+          continue
+        }
 
         const updates = {
           status: newStatus,
-          upsStatus: currentStatus?.description || statusType,
+          upsStatus: currentStatus?.description || currentStatus?.code || null,
           upsDescription: currentStatus?.description || null,
           updatedAt: FieldValue.serverTimestamp(),
           updatedBy: 'system:ups-sync',
         }
         if (newStatus === 'delivered') {
-          updates.deliveredAt = FieldValue.serverTimestamp()
+          // Use actual carrier event time when available; fall back to server time
+          if (latestActivity?.date && latestActivity?.time) {
+            const d = latestActivity.date  // YYYYMMDD
+            const t = latestActivity.time  // HHMMSS
+            updates.deliveredAt = new Date(
+              `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}T${t.slice(0,2)}:${t.slice(2,4)}:${t.slice(4,6)}`
+            )
+          } else {
+            updates.deliveredAt = FieldValue.serverTimestamp()
+          }
         }
         if (newStatus === 'shipped' && !shipment.shippedAt) {
           updates.shippedAt = FieldValue.serverTimestamp()

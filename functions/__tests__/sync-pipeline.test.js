@@ -37,20 +37,32 @@ function computeFedExUpdates(shipment, trackResult) {
 }
 
 // Simulates the core logic from syncUpsForOrg
+// MUST stay in sync with the statusType extraction in index.js syncUpsForOrg
 function computeUpsUpdates(shipment, trackData) {
   const pkg = trackData?.trackResponse?.shipment?.[0]?.package?.[0]
   if (!pkg) return null
 
-  const currentStatus = pkg.currentStatus || pkg.activity?.[0]?.status
-  const statusType = currentStatus?.type || null
-  const newStatus = mapUpsStatus(statusType)
+  // Sort activity newest-first by UPS date+time strings
+  const sortedActivity = [...(pkg.activity || [])].sort((a, b) => {
+    const da = `${a.date || ''}${a.time || ''}`
+    const db = `${b.date || ''}${b.time || ''}`
+    return db.localeCompare(da)
+  })
+  const latestActivity = sortedActivity[0]
+  const currentStatus = pkg.currentStatus || latestActivity?.status
+  const statusContext = {
+    type: currentStatus?.type || null,
+    code: currentStatus?.code || null,
+    description: currentStatus?.description || latestActivity?.description || null,
+  }
+  const newStatus = mapUpsStatus(statusContext)
 
   if (!newStatus || newStatus === shipment.status) return null
 
   const updates = {
     status: newStatus,
-    upsStatus: currentStatus?.description || statusType,
-    upsDescription: currentStatus?.description || null,
+    upsStatus: statusContext.description || statusContext.code || null,
+    upsDescription: statusContext.description || null,
     updatedBy: 'system:ups-sync',
   }
 
@@ -247,16 +259,124 @@ describe('UPS sync pipeline integration', () => {
       },
     }
     const updates = computeUpsUpdates(shipment, data)
+    expect(updates).not.toBeNull()
     expect(updates.status).toBe('in_transit')
   })
 
-  it('returns null for unknown UPS status type', () => {
+  it('unknown type with unrecognized description returns null — preserves existing status', () => {
     const shipment = { status: 'pending', trackingNumber: '1Z123' }
     const data = {
       trackResponse: {
-        shipment: [{ package: [{ currentStatus: { type: 'ZZ', description: 'Unknown' } }] }],
+        shipment: [{ package: [{ currentStatus: { type: 'ZZ', description: 'Unknown scan event' } }] }],
       },
     }
     expect(computeUpsUpdates(shipment, data)).toBeNull()
+  })
+
+  it('returns null for unknown UPS status type with no description', () => {
+    const shipment = { status: 'pending', trackingNumber: '1Z123' }
+    const data = {
+      trackResponse: {
+        shipment: [{ package: [{ currentStatus: { type: 'ZZ' } }] }],
+      },
+    }
+    expect(computeUpsUpdates(shipment, data)).toBeNull()
+  })
+
+  it('falls back to code field when type field is absent (production API variant)', () => {
+    const shipment = { status: 'pending', trackingNumber: '1Z123' }
+    const data = {
+      trackResponse: {
+        shipment: [{ package: [{ currentStatus: { code: 'D', description: 'Delivered' } }] }],
+      },
+    }
+    const updates = computeUpsUpdates(shipment, data)
+    expect(updates).not.toBeNull()
+    expect(updates.status).toBe('delivered')
+    expect(updates.deliveredAt).toBe('SERVER_TIMESTAMP')
+  })
+
+  it('falls back to code field for in_transit when type is absent', () => {
+    const shipment = { status: 'pending', trackingNumber: '1Z123' }
+    const data = {
+      trackResponse: {
+        shipment: [{ package: [{ currentStatus: { code: 'I', description: 'In Transit' } }] }],
+      },
+    }
+    const updates = computeUpsUpdates(shipment, data)
+    expect(updates).not.toBeNull()
+    expect(updates.status).toBe('in_transit')
+  })
+
+  it('falls back to code field for RS (return to shipper) when type is absent', () => {
+    const shipment = { status: 'in_transit', trackingNumber: '1Z123' }
+    const data = {
+      trackResponse: {
+        shipment: [{ package: [{ currentStatus: { code: 'RS', description: 'Returned to Shipper' } }] }],
+      },
+    }
+    const updates = computeUpsUpdates(shipment, data)
+    expect(updates).not.toBeNull()
+    expect(updates.status).toBe('exception')
+  })
+
+  it('returns null when status context has no type, code, or description', () => {
+    const shipment = { status: 'pending', trackingNumber: '1Z123' }
+    const data = {
+      trackResponse: {
+        shipment: [{ package: [{ currentStatus: {} }] }],
+      },
+    }
+    expect(computeUpsUpdates(shipment, data)).toBeNull()
+  })
+
+  it('uses description as primary discriminator when type and code conflict', () => {
+    const shipment = { status: 'pending', trackingNumber: '1Z123' }
+    const data = {
+      trackResponse: {
+        // description 'Delivered' wins — both type and code are secondary
+        shipment: [{ package: [{ currentStatus: { type: 'D', code: 'I', description: 'Delivered' } }] }],
+      },
+    }
+    const updates = computeUpsUpdates(shipment, data)
+    expect(updates).not.toBeNull()
+    expect(updates.status).toBe('delivered')
+  })
+
+  it('maps code 005 with description "On the Way" to in_transit (not exception)', () => {
+    const shipment = { status: 'pending', trackingNumber: '1Z123' }
+    const data = {
+      trackResponse: {
+        shipment: [{ package: [{ currentStatus: { code: '005', description: 'On the Way' } }] }],
+      },
+    }
+    const updates = computeUpsUpdates(shipment, data)
+    expect(updates).not.toBeNull()
+    expect(updates.status).toBe('in_transit')
+  })
+
+  it('maps code 005 with description "Return to Sender" to exception', () => {
+    const shipment = { status: 'in_transit', trackingNumber: '1Z123' }
+    const data = {
+      trackResponse: {
+        shipment: [{ package: [{ currentStatus: { code: '005', description: 'Return to Sender' } }] }],
+      },
+    }
+    const updates = computeUpsUpdates(shipment, data)
+    expect(updates).not.toBeNull()
+    expect(updates.status).toBe('exception')
+  })
+
+  it('maps code 005 with description "Delivered" to delivered', () => {
+    const shipment = { status: 'in_transit', trackingNumber: '1Z123' }
+    const data = {
+      trackResponse: {
+        shipment: [{ package: [{ currentStatus: { code: '005', description: 'Delivered' } }] }],
+      },
+    }
+    const updates = computeUpsUpdates(shipment, data)
+    expect(updates).not.toBeNull()
+    expect(updates.status).toBe('delivered')
+    expect(updates.deliveredAt).toBe('SERVER_TIMESTAMP')
   })
 })
