@@ -52,7 +52,7 @@ export function mapUpsStatus(status) {
       desc.includes('returning to sender') ||
       desc.includes('return to shipper') ||
       desc.includes('returned to shipper') ||
-      desc.includes('rts')
+      /\brts\b/.test(desc)
     ) return 'exception'
 
     if (desc.includes('delivered') || desc.includes('left at')) return 'delivered'

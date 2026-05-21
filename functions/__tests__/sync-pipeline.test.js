@@ -49,11 +49,12 @@ function computeUpsUpdates(shipment, trackData) {
     return db.localeCompare(da)
   })
   const latestActivity = sortedActivity[0]
+  const usesLatestActivity = !pkg.currentStatus
   const currentStatus = pkg.currentStatus || latestActivity?.status
   const statusContext = {
     type: currentStatus?.type || null,
     code: currentStatus?.code || null,
-    description: currentStatus?.description || latestActivity?.description || null,
+    description: currentStatus?.description || (usesLatestActivity ? latestActivity?.description : null) || null,
   }
   const newStatus = mapUpsStatus(statusContext)
 

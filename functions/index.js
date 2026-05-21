@@ -493,11 +493,12 @@ export const trackUps = onCall(
         return db.localeCompare(da)
       })
       const latestActivity = sortedActivity[0]
+      const usesLatestActivity = !pkg.currentStatus
       const currentStatus = pkg.currentStatus || latestActivity?.status
       const statusContext = {
         type: currentStatus?.type || null,
         code: currentStatus?.code || null,
-        description: currentStatus?.description || latestActivity?.description || null,
+        description: currentStatus?.description || (usesLatestActivity ? latestActivity?.description : null) || null,
       }
       const mappedStatus = mapUpsStatus(statusContext)
 
@@ -598,11 +599,12 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
           return db.localeCompare(da)
         })
         const latestActivity = sortedActivity[0]
+        const usesLatestActivity = !pkg.currentStatus
         const currentStatus = pkg.currentStatus || latestActivity?.status
         const statusContext = {
           type: currentStatus?.type || null,
           code: currentStatus?.code || null,
-          description: currentStatus?.description || latestActivity?.description || null,
+          description: currentStatus?.description || (usesLatestActivity ? latestActivity?.description : null) || null,
         }
         if (!statusContext.type && !statusContext.code && !statusContext.description) {
           console.warn(`UPS sync: no status context for TN ${tn}, currentStatus=${JSON.stringify(currentStatus)}`)
