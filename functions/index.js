@@ -1,11 +1,13 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https'
+import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
+import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 import { defineSecret } from 'firebase-functions/params'
 import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { mapFedExStatus } from './fedex-status.js'
 import { mapUpsStatus } from './ups-status.js'
 import { detectCarrier } from './carrier-detection.js'
+import { handleTrackAlertWebhook, subscribeTrackingNumbers } from './ups-track-alert.js'
 
 initializeApp()
 const firestore = getFirestore()
@@ -17,6 +19,7 @@ const fedexMode = defineSecret('FEDEX_MODE')
 const upsClientId = defineSecret('UPS_CLIENT_ID')
 const upsClientSecret = defineSecret('UPS_CLIENT_SECRET')
 const upsMode = defineSecret('UPS_MODE')
+const trackAlertWebhookSecret = defineSecret('TRACK_ALERT_WEBHOOK_SECRET')
 
 // FedEx API — defaults to production
 // Set FEDEX_MODE to "sandbox" to use sandbox for testing
@@ -438,7 +441,7 @@ async function getUpsToken(clientId, clientSecret) {
 async function fetchUpsTracking(token, trackingNumber) {
   const baseUrl = getUpsBaseUrl()
   const res = await fetch(
-    `${baseUrl}/api/track/v1/details/${encodeURIComponent(trackingNumber.trim())}?locale=en_US&returnSignature=false`,
+    `${baseUrl}/api/track/v1/details/${encodeURIComponent(trackingNumber.trim())}?locale=en_US&returnSignature=false&returnMilestones=true&returnPOD=true`,
     {
       method: 'GET',
       headers: {
@@ -610,6 +613,7 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
           console.warn(`UPS sync: no status context for TN ${tn}, currentStatus=${JSON.stringify(currentStatus)}`)
         }
         const newStatus = mapUpsStatus(statusContext)
+        console.warn(`UPS DIAG2 TN=${tn}: pkgKeys=[${Object.keys(pkg).join(',')}], milestones=${JSON.stringify(pkg.milestones)}, deliveryDate=${JSON.stringify(pkg.deliveryDate)}, deliveryInfo=${JSON.stringify(pkg.deliveryInformation)}`)
 
         return { tn, newStatus, currentStatus: statusContext, latestActivity }
       })
@@ -751,6 +755,157 @@ export const refreshUpsStatuses = onCall(
       console.error('Manual UPS refresh error:', err)
       throw new HttpsError('internal', err.message || 'Failed to refresh UPS statuses.')
     }
+  }
+)
+
+// ─── UPS Track Alert ─────────────────────────────────────────────────────────
+
+/**
+ * Public HTTPS endpoint — UPS posts tracking events here when package status changes.
+ * No auth middleware: UPS authenticates via the `credential` header we validate internally.
+ */
+export const upsTrackAlertWebhook = onRequest(
+  { secrets: [trackAlertWebhookSecret] },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).send('Method Not Allowed')
+      return
+    }
+    await handleTrackAlertWebhook(req, res, firestore, trackAlertWebhookSecret.value())
+  }
+)
+
+/**
+ * Callable — subscribe one or more UPS tracking numbers to Track Alert push notifications.
+ * UPS will POST status changes to upsTrackAlertWebhook going forward.
+ */
+export const subscribeUpsTracking = onCall(
+  { secrets: [upsClientId, upsClientSecret, upsMode, trackAlertWebhookSecret] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.')
+    const { trackingNumbers } = request.data
+    if (!Array.isArray(trackingNumbers) || trackingNumbers.length === 0)
+      throw new HttpsError('invalid-argument', 'trackingNumbers array required.')
+    if (trackingNumbers.length > 100)
+      throw new HttpsError('invalid-argument', 'Max 100 tracking numbers per call.')
+
+    try {
+      const token = await getUpsToken(upsClientId.value(), upsClientSecret.value())
+      const webhookUrl = `https://us-central1-delivery-manifest-c3deb.cloudfunctions.net/upsTrackAlertWebhook`
+      return await subscribeTrackingNumbers(trackingNumbers, webhookUrl, trackAlertWebhookSecret.value(), token)
+    } catch (err) {
+      console.error('subscribeUpsTracking error:', err)
+      throw new HttpsError('internal', err.message || 'Failed to subscribe tracking numbers.')
+    }
+  }
+)
+
+const WEBHOOK_URL = 'https://us-central1-delivery-manifest-c3deb.cloudfunctions.net/upsTrackAlertWebhook'
+
+/**
+ * Firestore onCreate trigger — auto-subscribes new UPS shipments to Track Alert.
+ * Fires when any shipment document is created under organizations/{orgSlug}/shipments/{shipmentId}.
+ * Silently logs errors so a failed subscription never blocks shipment creation.
+ */
+export const onShipmentCreated = onDocumentCreated(
+  {
+    document: 'organizations/{orgSlug}/shipments/{shipmentId}',
+    secrets: [upsClientId, upsClientSecret, upsMode, trackAlertWebhookSecret],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data) return
+
+    const { trackingNumber, carrier } = data
+    if (!trackingNumber || !carrier) return
+
+    const carrierLower = carrier.toLowerCase()
+    if (carrierLower !== 'ups') return
+
+    const { orgSlug, shipmentId } = event.params
+    console.log(`onShipmentCreated: subscribing TN ${trackingNumber} for org=${orgSlug}, shipment=${shipmentId}`)
+
+    try {
+      const token = await getUpsToken(upsClientId.value(), upsClientSecret.value())
+      const result = await subscribeTrackingNumbers(
+        [trackingNumber],
+        WEBHOOK_URL,
+        trackAlertWebhookSecret.value(),
+        token
+      )
+      console.log(`onShipmentCreated: subscribed TN ${trackingNumber}`, JSON.stringify(result))
+    } catch (err) {
+      // Don't throw — subscription failure must not block shipment creation
+      console.error(`onShipmentCreated: failed to subscribe TN ${trackingNumber}:`, err.message)
+    }
+  }
+)
+
+/**
+ * Callable — backfill Track Alert subscriptions for all active UPS shipments
+ * across all organizations. Use once to subscribe existing shipments.
+ * Returns { subscribedCount } — the number of unique tracking numbers subscribed.
+ */
+export const backfillTrackAlertSubscriptions = onCall(
+  {
+    secrets: [upsClientId, upsClientSecret, upsMode, trackAlertWebhookSecret],
+    memory: '512MiB',
+    timeoutSeconds: 300,
+  },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.')
+
+    const activeStatuses = ['pending', 'shipped', 'in_transit', 'exception']
+
+    // Query both lowercase and legacy uppercase carrier values
+    const [snapLower, snapUpper] = await Promise.all([
+      firestore.collectionGroup('shipments')
+        .where('carrier', '==', 'ups')
+        .where('status', 'in', activeStatuses)
+        .get(),
+      firestore.collectionGroup('shipments')
+        .where('carrier', '==', 'UPS')
+        .where('status', 'in', activeStatuses)
+        .get(),
+    ])
+
+    const allDocs = [...snapLower.docs, ...snapUpper.docs]
+    console.log(`backfillTrackAlertSubscriptions: found ${allDocs.length} active UPS shipment docs`)
+
+    // Dedupe tracking numbers
+    const trackingSet = new Set()
+    for (const doc of allDocs) {
+      const tn = doc.data().trackingNumber?.trim()
+      if (tn) trackingSet.add(tn)
+    }
+
+    const uniqueTrackingNumbers = [...trackingSet]
+    console.log(`backfillTrackAlertSubscriptions: ${uniqueTrackingNumbers.length} unique tracking numbers to subscribe`)
+
+    if (uniqueTrackingNumbers.length === 0) {
+      return { subscribedCount: 0 }
+    }
+
+    const token = await getUpsToken(upsClientId.value(), upsClientSecret.value())
+    const webhookSecret = trackAlertWebhookSecret.value()
+
+    // Subscribe in batches of 100 (UPS Track Alert max per call)
+    const BATCH_SIZE = 100
+    let subscribedCount = 0
+
+    for (let i = 0; i < uniqueTrackingNumbers.length; i += BATCH_SIZE) {
+      const batch = uniqueTrackingNumbers.slice(i, i + BATCH_SIZE)
+      try {
+        const result = await subscribeTrackingNumbers(batch, WEBHOOK_URL, webhookSecret, token)
+        subscribedCount += batch.length
+        console.log(`backfillTrackAlertSubscriptions: batch ${Math.floor(i / BATCH_SIZE) + 1} subscribed ${batch.length} TNs`, JSON.stringify(result))
+      } catch (err) {
+        console.error(`backfillTrackAlertSubscriptions: batch ${Math.floor(i / BATCH_SIZE) + 1} failed:`, err.message)
+      }
+    }
+
+    console.log(`backfillTrackAlertSubscriptions: done — ${subscribedCount}/${uniqueTrackingNumbers.length} tracking numbers subscribed`)
+    return { subscribedCount }
   }
 )
 

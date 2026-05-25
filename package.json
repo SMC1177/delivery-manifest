@@ -9,6 +9,7 @@
     "test": "cd v2 && pnpm test && cd ../functions && pnpm test",
     "test:v2": "cd v2 && pnpm test",
     "test:functions": "cd functions && pnpm test",
+    "test:e2e": "cd functions && pnpm test",
     "prepare": "husky"
   },
   "keywords": [
