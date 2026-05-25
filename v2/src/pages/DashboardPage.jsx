@@ -14,6 +14,7 @@ import DeleteModal from '../components/DeleteModal'
 
 const refreshFedExFn = httpsCallable(getFunctions(), 'refreshFedExStatuses')
 const refreshUpsFn = httpsCallable(getFunctions(), 'refreshUpsStatuses')
+const backfillTrackAlertFn = httpsCallable(getFunctions(), 'backfillTrackAlertSubscriptions')
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'All' },
@@ -279,6 +280,13 @@ export default function DashboardPage() {
     } catch (err) {
       console.error('UPS refresh error:', err)
       errors.push('UPS')
+    }
+
+    // Subscribe active UPS tracking numbers to Track Alert
+    try {
+      await backfillTrackAlertFn({})
+    } catch (err) {
+      console.error('Track Alert backfill error:', err)
     }
 
     if (errors.length > 0 && totalChecked === 0) {
