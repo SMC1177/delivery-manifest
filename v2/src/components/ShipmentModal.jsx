@@ -56,6 +56,7 @@ export default function ShipmentModal({ isOpen, onClose, onSubmit, shipment }) {
       onClose()
     } catch (err) {
       console.error(err)
+      window.alert(`Save failed: ${err.message || 'Unknown error'}`)
     } finally {
       setSaving(false)
     }
