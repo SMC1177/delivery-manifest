@@ -856,21 +856,24 @@ export const backfillTrackAlertSubscriptions = onCall(
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.')
 
     const activeStatuses = ['pending', 'shipped', 'in_transit', 'exception']
+    const cutoffDate = new Date('2026-05-21T00:00:00Z')
 
     // Query both lowercase and legacy uppercase carrier values
     const [snapLower, snapUpper] = await Promise.all([
       firestore.collectionGroup('shipments')
         .where('carrier', '==', 'ups')
         .where('status', 'in', activeStatuses)
+        .where('createdAt', '>=', cutoffDate)
         .get(),
       firestore.collectionGroup('shipments')
         .where('carrier', '==', 'UPS')
         .where('status', 'in', activeStatuses)
+        .where('createdAt', '>=', cutoffDate)
         .get(),
     ])
 
     const allDocs = [...snapLower.docs, ...snapUpper.docs]
-    console.log(`backfillTrackAlertSubscriptions: found ${allDocs.length} active UPS shipment docs`)
+    console.log(`backfillTrackAlertSubscriptions: found ${allDocs.length} active UPS shipment docs (created >= 2026-05-21)`)
 
     // Dedupe tracking numbers
     const trackingSet = new Set()
