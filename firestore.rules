@@ -3,58 +3,102 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // --- helpers -------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    // Org isolation: caller must have a member doc in the org.
+    function isMember(orgSlug) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/organizations/$(orgSlug)/members/$(request.auth.uid));
+    }
+    function isAdmin(orgSlug) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/organizations/$(orgSlug)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+
     // User profiles - users can read/write their own
     match /userProfiles/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
 
     // Organizations
     match /organizations/{orgSlug} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
+      // Org doc stays readable/creatable by any signed-in user:
+      // JoinPage + SetupPage read it BEFORE membership exists.
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      // Updates are org-internal (settings, branding, enabledFields).
+      allow update: if isMember(orgSlug);
 
-      // Members
+      // Members: self-create on join (AuthContext joinOrganization),
+      // self-update for mfaEnrolled/welcomeDismissed; members read the
+      // roster; admins manage other members.
       match /members/{memberId} {
-        allow read, write: if request.auth != null;
+        allow read: if isMember(orgSlug) || (isSignedIn() && request.auth.uid == memberId);
+        allow create, update: if (isSignedIn() && request.auth.uid == memberId) || isAdmin(orgSlug);
+        allow delete: if isAdmin(orgSlug) || (isSignedIn() && request.auth.uid == memberId);
       }
 
-      // Shipments
+      // Shipments (PHI) — org members only.
       match /shipments/{shipmentId} {
-        allow read, write: if request.auth != null;
+        allow read, write: if isMember(orgSlug);
       }
 
-      // Audit log
+      // Deliveries (PHI) — org members only.
+      // (Previously worked only via the deleted global catch-all.)
+      match /deliveries/{deliveryId} {
+        allow read, write: if isMember(orgSlug);
+      }
+
+      // Audit log — members read/append; never update/delete from clients.
       match /auditLog/{logId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null;
+        allow read: if isMember(orgSlug);
+        allow create: if isMember(orgSlug);
       }
 
-      // Invites
+      // Invites — read/redeem happens BEFORE membership (JoinPage),
+      // so those stay signed-in-level. Creation/deletion is member work.
       match /invites/{inviteId} {
-        allow read, write: if request.auth != null;
+        allow read, update: if isSignedIn();
+        allow create, delete: if isMember(orgSlug);
+      }
+
+      // Settings docs (importConfig, textMessaging, ...) — members only.
+      // Write stays member-level (ImportPage writes importConfig and its
+      // role gating is unverified); tightening to admin is a follow-up.
+      // Deep subcollections under settings (inboundSeen, usage) are
+      // Cloud-Function-only and default-deny now: no rule matches them.
+      match /settings/{settingDoc} {
+        allow read, write: if isMember(orgSlug);
+      }
+
+      // SMS contacts — clients only ever READ (writes are Cloud Functions).
+      match /smsContacts/{phone} {
+        allow read: if isMember(orgSlug);
+        allow write: if false;
       }
     }
 
-    // Rate limiting
+    // Rate limiting — must work pre-authentication.
     match /loginAttempts/{email} {
       allow read, write: if true;
     }
 
     // platformAudit — admin-action + reconciliation audit trail.
     // Written ONLY by Cloud Functions (Admin SDK bypasses these rules).
-    // Deny ALL client access: audit records must be unreadable and
-    // unforgeable from the browser, including by platform admins.
-    // NOTE: the legacy catch-all below currently OVERRIDES this deny
-    // (Firestore ORs overlapping allows) — this block becomes effective
-    // once the catch-all is narrowed/removed. Kept as defense-in-depth.
+    // Deny ALL client access. Effective now that no global catch-all exists.
     match /platformAudit/{entryId} {
       allow read, write: if false;
     }
 
-    // Legacy v1 deliveries (keep working)
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // Legacy v1 app — scoped to its actual data path
+    // (main.js: /artifacts/{projectId}/public/data/manifest).
+    // This replaces the old GLOBAL catch-all that exposed every
+    // collection (including other orgs' PHI) to any signed-in user.
+    // DO NOT widen this back to /{document=**}.
+    match /artifacts/{document=**} {
+      allow read, write: if isSignedIn();
     }
   }
 }
