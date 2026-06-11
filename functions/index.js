@@ -917,3 +917,13 @@ export { ringcentralInbound } from './sms-inbound.js'
 export { saveRingCentralCreds } from './sms-save-creds.js'
 export { registerRcWebhook, deregisterRcWebhook } from './sms-webhook-register.js'
 export { renewRcWebhooks } from './sms-webhook-renew.js'
+
+// --- Usage counters for platform-admin billing ---
+// Spec: docs/superpowers/specs/2026-06-11-platform-admin-usage-billing-design.md
+// Triggers maintain organizations/{slug}.shipmentCount + monthlyUsage;
+// the scheduled job reconciles drift monthly.
+export {
+  onShipmentCreatedUsage,
+  onShipmentDeletedUsage,
+} from './usage-counters.js'
+export { reconcileUsageMonthly } from './usage-reconcile.js'

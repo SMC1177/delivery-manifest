@@ -1,0 +1,60 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // User profiles - users can read/write their own
+    match /userProfiles/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Organizations
+    match /organizations/{orgSlug} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+
+      // Members
+      match /members/{memberId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // Shipments
+      match /shipments/{shipmentId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // Audit log
+      match /auditLog/{logId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+      }
+
+      // Invites
+      match /invites/{inviteId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // Rate limiting
+    match /loginAttempts/{email} {
+      allow read, write: if true;
+    }
+
+    // platformAudit — admin-action + reconciliation audit trail.
+    // Written ONLY by Cloud Functions (Admin SDK bypasses these rules).
+    // Deny ALL client access: audit records must be unreadable and
+    // unforgeable from the browser, including by platform admins.
+    // NOTE: the legacy catch-all below currently OVERRIDES this deny
+    // (Firestore ORs overlapping allows) — this block becomes effective
+    // once the catch-all is narrowed/removed. Kept as defense-in-depth.
+    match /platformAudit/{entryId} {
+      allow read, write: if false;
+    }
+
+    // Legacy v1 deliveries (keep working)
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
