@@ -10,6 +10,9 @@ export function useAdminData() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [orgSettings, setOrgSettings] = useState({})
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [settingsError, setSettingsError] = useState(null)
 
   const fetchSummary = useCallback(async (months) => {
     setLoading(true)
@@ -44,5 +47,32 @@ export function useAdminData() {
     }
   }, [summary, fetchSummary])
 
-  return { summary, loading, saving, error, fetchSummary, saveBillingConfig }
+  const fetchOrgSettings = useCallback(async (orgSlug) => {
+    setSettingsLoading(true)
+    setSettingsError(null)
+    try {
+      const getOrgSettings = httpsCallable(getFunctions(), 'getOrgSettings')
+      const result = await getOrgSettings({ orgSlug })
+      setOrgSettings(prev => ({ ...prev, [orgSlug]: result.data }))
+    } catch (err) {
+      setSettingsError(err.message)
+    } finally {
+      setSettingsLoading(false)
+    }
+  }, [])
+
+  const saveOrgSettings = useCallback(async (orgSlug, target, updates, reason) => {
+    setSettingsError(null)
+    try {
+      const updateOrgSettings = httpsCallable(getFunctions(), 'updateOrgSettings')
+      await updateOrgSettings({ orgSlug, target, updates, reason })
+      // Re-fetch to get fresh masked state
+      await fetchOrgSettings(orgSlug)
+    } catch (err) {
+      setSettingsError(err.message)
+      throw err
+    }
+  }, [fetchOrgSettings])
+
+  return { summary, loading, saving, error, fetchSummary, saveBillingConfig, orgSettings, settingsLoading, settingsError, fetchOrgSettings, saveOrgSettings }
 }

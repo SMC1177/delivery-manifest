@@ -4,6 +4,7 @@
 // org metadata only, never patient data.
 import { Fragment, useEffect, useState } from 'react'
 import { useAdminData } from '../hooks/useAdminData'
+import AdminSettingsPanel from '../components/AdminSettingsPanel'
 
 function formatMonth(date) {
   const y = date.getFullYear()
@@ -360,6 +361,7 @@ export default function AdminDashboardPage() {
                             onSave={saveBillingConfig}
                             saving={saving}
                           />
+                          <AdminSettingsPanel orgSlug={org.slug} />
                         </td>
                       </tr>
                     )}

@@ -46,6 +46,11 @@ function createMockAdminData(overrides = {}) {
     error: null,
     fetchSummary: vi.fn(),
     saveBillingConfig: vi.fn(),
+    orgSettings: {},
+    settingsLoading: false,
+    settingsError: null,
+    fetchOrgSettings: vi.fn(),
+    saveOrgSettings: vi.fn(),
     ...overrides,
   }
 }

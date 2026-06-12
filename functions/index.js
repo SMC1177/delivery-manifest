@@ -935,3 +935,11 @@ export {
   getOrgUsageSummary,
   updateOrgBillingConfig,
 } from './admin-usage.js'
+
+// --- Settings remote-assist (super-user dashboard, Option A) ---
+// Spec: docs/superpowers/specs/2026-06-11-platform-admin-usage-billing-design.md
+// Secrets masked on read, mask markers stripped on write, audited per change.
+export {
+  getOrgSettings,
+  updateOrgSettings,
+} from './admin-settings.js'
