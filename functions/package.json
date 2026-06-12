@@ -6,6 +6,12 @@
   },
   "main": "index.js",
   "type": "module",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@firebase/util",
+      "protobufjs"
+    ]
+  },
   "scripts": {
     "serve": "firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
