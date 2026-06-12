@@ -1,0 +1,14 @@
+allowBuilds:
+  '0': '@firebase/util'
+  '1': protobufjs
+# Build-script allowlist for the pnpm versions Google Cloud Build uses.
+# Newer pnpm no longer reads the "pnpm" field in package.json
+# ("[WARN] The pnpm field in package.json is no longer read by pnpm")
+# and reads these settings from pnpm-workspace.yaml instead.
+# BOTH spellings are declared because the key was renamed across pnpm
+# major versions (onlyBuiltDependencies -> allowBuilds); unknown keys
+# only produce warnings. package.json "pnpm.onlyBuiltDependencies"
+# remains for older local pnpm 10 installs. Keep all three in sync.
+onlyBuiltDependencies:
+  - "@firebase/util"
+  - protobufjs
