@@ -28,6 +28,7 @@ export function useAuth() {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [userData, setUserData] = useState(null)
+  const [profile, setProfile] = useState(null)
   const [orgSlug, setOrgSlug] = useState(null)
   const [loading, setLoading] = useState(true)
   const [mfaResolver, setMfaResolver] = useState(null)
@@ -40,6 +41,7 @@ export function AuthProvider({ children }) {
         await loadUserData(firebaseUser.uid)
       } else {
         setUserData(null)
+        setProfile(null)
         setOrgSlug(null)
       }
       setLoading(false)
@@ -51,11 +53,12 @@ export function AuthProvider({ children }) {
     try {
       const userSnap = await getDoc(doc(db, 'userProfiles', uid))
       if (userSnap.exists()) {
-        const profile = userSnap.data()
-        if (profile.orgSlug) {
-          setOrgSlug(profile.orgSlug)
+        const profileData = userSnap.data()
+        setProfile(profileData)
+        if (profileData.orgSlug) {
+          setOrgSlug(profileData.orgSlug)
           const memberSnap = await getDoc(
-            doc(db, 'organizations', profile.orgSlug, 'members', uid)
+            doc(db, 'organizations', profileData.orgSlug, 'members', uid)
           )
           if (memberSnap.exists()) {
             setUserData(memberSnap.data())
@@ -65,11 +68,13 @@ export function AuthProvider({ children }) {
           setUserData(null)
         }
       } else {
+        setProfile(null)
         setOrgSlug(null)
         setUserData(null)
       }
     } catch (err) {
       console.error('Error loading user data:', err)
+      setProfile(null)
       setOrgSlug(null)
       setUserData(null)
     }
@@ -272,6 +277,7 @@ export function AuthProvider({ children }) {
     await signOut(auth)
     setUser(null)
     setUserData(null)
+    setProfile(null)
     setOrgSlug(null)
     setMfaResolver(null)
   }
@@ -279,6 +285,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     userData,
+    profile,
     orgSlug,
     loading,
     mfaResolver,

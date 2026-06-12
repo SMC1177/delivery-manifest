@@ -927,3 +927,11 @@ export {
   onShipmentDeletedUsage,
 } from './usage-counters.js'
 export { reconcileUsageMonthly } from './usage-reconcile.js'
+
+// --- Platform-admin callables (super-user dashboard) ---
+// Spec: docs/superpowers/specs/2026-06-11-platform-admin-usage-billing-design.md
+// Gated server-side by requirePlatformAdmin (lib/admin-guard.js).
+export {
+  getOrgUsageSummary,
+  updateOrgBillingConfig,
+} from './admin-usage.js'

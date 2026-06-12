@@ -13,6 +13,8 @@ import JoinPage from './pages/JoinPage'
 import DashboardPage from './pages/DashboardPage'
 import ImportPage from './pages/ImportPage'
 import SettingsPage from './pages/SettingsPage'
+import AdminProtectedRoute from './components/AdminProtectedRoute'
+import AdminDashboardPage from './pages/AdminDashboardPage'
 
 function OrgRedirect() {
   const { orgSlug, loading } = useAuth()
@@ -51,6 +53,14 @@ export default function App() {
                 <ProtectedRoute>
                   <OrgRedirect />
                 </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/dashboard"
+              element={
+                <AdminProtectedRoute>
+                  <AdminDashboardPage />
+                </AdminProtectedRoute>
               }
             />
             <Route path="/:slug/join" element={<JoinPage />} />
