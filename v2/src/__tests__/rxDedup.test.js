@@ -39,14 +39,18 @@ vi.mock('../contexts/AuthContext', () => ({
 }))
 
 const { useShipments } = await import('../hooks/useShipments')
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 
 describe('Rx-based dedup (tier 3)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetDocs.mockResolvedValue({ docs: [], empty: true })
   })
 
   it('skips when same patient has all Rx numbers on an existing record', async () => {
+    const { result } = renderHook(() => useShipments('test-org'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    mockGetDocs.mockClear()
     // No tracking match
     mockGetDocs.mockResolvedValueOnce({ empty: true })
     // Patient query finds existing with same Rx
@@ -63,8 +67,6 @@ describe('Rx-based dedup (tier 3)', () => {
       ],
     })
 
-    const { result } = renderHook(() => useShipments('test-org'))
-
     let addResult
     await act(async () => {
       addResult = await result.current.addShipment({
@@ -80,6 +82,9 @@ describe('Rx-based dedup (tier 3)', () => {
   })
 
   it('skips when Rx is a subset of existing record', async () => {
+    const { result } = renderHook(() => useShipments('test-org'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    mockGetDocs.mockClear()
     // No tracking match
     mockGetDocs.mockResolvedValueOnce({ empty: true })
     // Patient has a superset of the new Rx
@@ -96,8 +101,6 @@ describe('Rx-based dedup (tier 3)', () => {
       ],
     })
 
-    const { result } = renderHook(() => useShipments('test-org'))
-
     let addResult
     await act(async () => {
       addResult = await result.current.addShipment({
@@ -112,6 +115,9 @@ describe('Rx-based dedup (tier 3)', () => {
   })
 
   it('does NOT skip when new Rx numbers are different', async () => {
+    const { result } = renderHook(() => useShipments('test-org'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    mockGetDocs.mockClear()
     // No tracking match
     mockGetDocs.mockResolvedValueOnce({ empty: true })
     // Patient exists but with different Rx
@@ -132,8 +138,6 @@ describe('Rx-based dedup (tier 3)', () => {
 
     mockAddDoc.mockResolvedValueOnce({ id: 'new-doc' })
 
-    const { result } = renderHook(() => useShipments('test-org'))
-
     let addResult
     await act(async () => {
       addResult = await result.current.addShipment({
@@ -148,6 +152,9 @@ describe('Rx-based dedup (tier 3)', () => {
   })
 
   it('does NOT skip when patient name is different', async () => {
+    const { result } = renderHook(() => useShipments('test-org'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    mockGetDocs.mockClear()
     // No tracking match
     mockGetDocs.mockResolvedValueOnce({ empty: true })
     // No patient match (different name)
@@ -156,8 +163,6 @@ describe('Rx-based dedup (tier 3)', () => {
     mockGetDocs.mockResolvedValueOnce({ empty: false, docs: [] })
 
     mockAddDoc.mockResolvedValueOnce({ id: 'new-doc' })
-
-    const { result } = renderHook(() => useShipments('test-org'))
 
     let addResult
     await act(async () => {
@@ -173,6 +178,9 @@ describe('Rx-based dedup (tier 3)', () => {
   })
 
   it('skips even without tracking number (no-tracking re-import)', async () => {
+    const { result } = renderHook(() => useShipments('test-org'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    mockGetDocs.mockClear()
     // No tracking number — skips tier 1 tracking check entirely
     // Patient query finds existing with same Rx
     mockGetDocs.mockResolvedValueOnce({
@@ -187,8 +195,6 @@ describe('Rx-based dedup (tier 3)', () => {
         },
       ],
     })
-
-    const { result } = renderHook(() => useShipments('test-org'))
 
     let addResult
     await act(async () => {
@@ -205,13 +211,14 @@ describe('Rx-based dedup (tier 3)', () => {
   })
 
   it('does not run Rx dedup when no Rx numbers provided', async () => {
+    const { result } = renderHook(() => useShipments('test-org'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    mockGetDocs.mockClear()
     // No tracking match
     mockGetDocs.mockResolvedValueOnce({ empty: true })
     // No Rx → skip patient query, go straight to date check
     // Date check: no overlap (no Rx to overlap with)
     mockAddDoc.mockResolvedValueOnce({ id: 'new-doc' })
-
-    const { result } = renderHook(() => useShipments('test-org'))
 
     let addResult
     await act(async () => {

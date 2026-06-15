@@ -29,7 +29,10 @@ export default function DashboardPage() {
   const { slug } = useParams()
   const { user, userData } = useAuth()
   const isViewer = userData?.role === 'viewer'
-  const { shipments, loading, error, addShipment, updateShipment, removeShipment } = useShipments(slug)
+  const {
+    shipments, loading, error, refresh,
+    addShipment, updateShipment, removeShipment,
+  } = useShipments(slug)
   const { logAction } = useAuditLog(slug)
   const addToast = useToast()
 
@@ -288,6 +291,8 @@ export default function DashboardPage() {
     } catch (err) {
       console.error('Track Alert backfill error:', err)
     }
+
+    await refresh()
 
     if (errors.length > 0 && totalChecked === 0) {
       addToast(`Failed to refresh ${errors.join(' and ')} statuses`, 'error')

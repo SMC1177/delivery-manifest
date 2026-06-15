@@ -3,8 +3,11 @@
 // Data comes exclusively from platformAdmin-gated callables — counts and
 // org metadata only, never patient data.
 import { Fragment, useEffect, useState } from 'react'
+import { useAuth } from '../contexts/AuthContext'
+import { useSessionTimeout } from '../hooks/useSessionTimeout'
 import { useAdminData } from '../hooks/useAdminData'
 import AdminSettingsPanel from '../components/AdminSettingsPanel'
+import SessionWarningModal from '../components/SessionWarningModal'
 
 function formatMonth(date) {
   const y = date.getFullYear()
@@ -184,6 +187,8 @@ function BillingEditor({ org, onSave, saving }) {
 }
 
 export default function AdminDashboardPage() {
+  const { logout } = useAuth()
+  const { showWarning, remainingSeconds, dismissWarning } = useSessionTimeout(30, logout)
   const { summary, loading, saving, error, fetchSummary, saveBillingConfig } = useAdminData()
 
   const today = new Date()
@@ -378,6 +383,14 @@ export default function AdminDashboardPage() {
             </table>
           </div>
         </div>
+      )}
+
+      {showWarning && (
+        <SessionWarningModal
+          remainingSeconds={remainingSeconds}
+          onDismiss={dismissWarning}
+          onSignOut={logout}
+        />
       )}
     </div>
   )

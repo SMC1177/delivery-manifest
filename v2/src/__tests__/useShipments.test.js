@@ -37,25 +37,27 @@ vi.mock('../contexts/AuthContext', () => ({
 const { useShipments, getCentralTimeDateString } = await import('../hooks/useShipments')
 
 // We need renderHook to test hooks
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 
 describe('useShipments', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetDocs.mockResolvedValue({ docs: [], empty: true })
   })
 
   describe('addShipment - duplicate detection', () => {
     it('creates a new shipment when no duplicates exist', async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: 'new-doc-id' })
+
+      const { result } = renderHook(() => useShipments('test-org'))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      mockGetDocs.mockClear()
       // No existing tracking match
       mockGetDocs.mockResolvedValueOnce({ empty: true })
       // Rx-based dedup: no patient match
       mockGetDocs.mockResolvedValueOnce({ docs: [] })
       // No date/Rx overlap
       mockGetDocs.mockResolvedValueOnce({ empty: false, docs: [] })
-
-      mockAddDoc.mockResolvedValueOnce({ id: 'new-doc-id' })
-
-      const { result } = renderHook(() => useShipments('test-org'))
 
       let addResult
       await act(async () => {
@@ -73,6 +75,9 @@ describe('useShipments', () => {
     })
 
     it('skips exact duplicates (same tracking + same Rx)', async () => {
+      const { result } = renderHook(() => useShipments('test-org'))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      mockGetDocs.mockClear()
       mockGetDocs.mockResolvedValueOnce({
         empty: false,
         docs: [
@@ -86,8 +91,6 @@ describe('useShipments', () => {
           },
         ],
       })
-
-      const { result } = renderHook(() => useShipments('test-org'))
 
       let addResult
       await act(async () => {
@@ -104,6 +107,11 @@ describe('useShipments', () => {
     })
 
     it('merges new Rx numbers into existing shipment with same tracking', async () => {
+      mockUpdateDoc.mockResolvedValueOnce()
+
+      const { result } = renderHook(() => useShipments('test-org'))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      mockGetDocs.mockClear()
       mockGetDocs.mockResolvedValueOnce({
         empty: false,
         docs: [
@@ -117,10 +125,6 @@ describe('useShipments', () => {
           },
         ],
       })
-
-      mockUpdateDoc.mockResolvedValueOnce()
-
-      const { result } = renderHook(() => useShipments('test-org'))
 
       let addResult
       await act(async () => {
@@ -139,6 +143,9 @@ describe('useShipments', () => {
     })
 
     it('warns on date + overlapping Rx with different tracking', async () => {
+      const { result } = renderHook(() => useShipments('test-org'))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      mockGetDocs.mockClear()
       // No tracking match
       mockGetDocs.mockResolvedValueOnce({ empty: true })
       // Rx-based dedup: patient exists but different Rx — not a full match
@@ -170,8 +177,6 @@ describe('useShipments', () => {
         ],
       })
 
-      const { result } = renderHook(() => useShipments('test-org'))
-
       let addResult
       await act(async () => {
         addResult = await result.current.addShipment({
@@ -188,14 +193,15 @@ describe('useShipments', () => {
     })
 
     it('creates shipment without tracking number (no duplicate check)', async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: 'new-doc-id' })
+
+      const { result } = renderHook(() => useShipments('test-org'))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      mockGetDocs.mockClear()
       // Rx-based dedup: no patient match
       mockGetDocs.mockResolvedValueOnce({ docs: [] })
       // Date query returns no overlap
       mockGetDocs.mockResolvedValueOnce({ empty: false, docs: [] })
-
-      mockAddDoc.mockResolvedValueOnce({ id: 'new-doc-id' })
-
-      const { result } = renderHook(() => useShipments('test-org'))
 
       let addResult
       await act(async () => {

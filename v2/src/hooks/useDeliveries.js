@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   collection,
   query,
-  onSnapshot,
+  getDocs,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -36,39 +36,47 @@ export function useDeliveries() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
+  const fetchDeliveries = useCallback(async () => {
     if (!orgId) {
       setDeliveries([])
       setLoading(false)
       return
     }
-
     setLoading(true)
-    const colRef = collection(db, 'organizations', orgId, 'deliveries')
-    const q = query(colRef)
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-        docs.sort((a, b) => {
-          const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || 0)
-          const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt || 0)
-          return dateB - dateA
-        })
-        setDeliveries(docs)
-        setLoading(false)
-        setError(null)
-      },
-      (err) => {
-        console.error('Deliveries snapshot error:', err)
-        setError(err.message)
-        setLoading(false)
-      }
-    )
-
-    return unsub
+    try {
+      const snap = await getDocs(query(collection(db, 'organizations', orgId, 'deliveries')))
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      docs.sort((a, b) => {
+        const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || 0)
+        const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt || 0)
+        return dateB - dateA
+      })
+      setDeliveries(docs)
+      setError(null)
+    } catch (err) {
+      console.error('Deliveries fetch error:', err)
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }, [orgId])
+
+  useEffect(() => {
+    fetchDeliveries()
+  }, [fetchDeliveries])
+
+  useEffect(() => {
+    const handleFocus = () => fetchDeliveries()
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fetchDeliveries()
+    }
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [fetchDeliveries])
 
   async function addDelivery(data) {
     if (!orgId) throw new Error('No organization')
@@ -82,6 +90,7 @@ export function useDeliveries() {
       updatedAt: serverTimestamp(),
       createdBy: user.uid,
     })
+    await fetchDeliveries()
   }
 
   async function updateDelivery(id, data) {
@@ -92,13 +101,15 @@ export function useDeliveries() {
       updates.deliveredAt = serverTimestamp()
     }
     await updateDoc(ref, updates)
+    await fetchDeliveries()
   }
 
   async function removeDelivery(id) {
     if (!orgId) throw new Error('No organization')
     const ref = doc(db, 'organizations', orgId, 'deliveries', id)
     await deleteDoc(ref)
+    await fetchDeliveries()
   }
 
-  return { deliveries, loading, error, addDelivery, updateDelivery, removeDelivery }
+  return { deliveries, loading, error, refresh: fetchDeliveries, addDelivery, updateDelivery, removeDelivery }
 }

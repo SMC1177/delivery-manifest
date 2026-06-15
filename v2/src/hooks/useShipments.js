@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   collection,
   query,
   where,
   getDocs,
-  onSnapshot,
+
   addDoc,
   updateDoc,
   deleteDoc,
@@ -52,39 +52,39 @@ export function useShipments(orgSlug) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
+  const fetchShipments = useCallback(async () => {
     if (!orgSlug) {
       setShipments([])
       setLoading(false)
       return
     }
-
     setLoading(true)
-    const colRef = collection(db, 'organizations', orgSlug, 'shipments')
-    const q = query(colRef)
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-        docs.sort((a, b) => {
-          const dateA = a.date || ''
-          const dateB = b.date || ''
-          return dateB.localeCompare(dateA)
-        })
-        setShipments(docs)
-        setLoading(false)
-        setError(null)
-      },
-      (err) => {
-        console.error('Shipments snapshot error:', err)
-        setError(err.message)
-        setLoading(false)
-      }
-    )
-
-    return unsub
+    try {
+      const snap = await getDocs(query(collection(db, 'organizations', orgSlug, 'shipments')))
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      docs.sort((a, b) => {
+        const dateA = a.date || ''
+        const dateB = b.date || ''
+        return dateB.localeCompare(dateA)
+      })
+      setShipments(docs)
+      setError(null)
+    } catch (err) {
+      console.error('Shipments fetch error:', err)
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }, [orgSlug])
+
+  useEffect(() => { fetchShipments() }, [fetchShipments])
+
+  useEffect(() => {
+    const onFocus = () => { if (document.visibilityState === 'visible') fetchShipments() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus) }
+  }, [fetchShipments])
 
   /**
    * Add a shipment with duplicate detection.
@@ -131,6 +131,7 @@ export function useShipments(orgSlug) {
           updatedBy: user.uid,
         })
 
+        await fetchShipments()
         return {
           id: existingDoc.id,
           merged: true,
@@ -202,6 +203,7 @@ export function useShipments(orgSlug) {
       createdBy: user.uid,
       updatedBy: user.uid,
     })
+    await fetchShipments()
     return { id: docRef.id, merged: false, skipped: false, message: null }
   }
 
@@ -216,13 +218,15 @@ export function useShipments(orgSlug) {
       updates.shippedAt = serverTimestamp()
     }
     await updateDoc(ref, updates)
+    await fetchShipments()
   }
 
   async function removeShipment(id) {
     if (!orgSlug) throw new Error('No organization')
     const ref = doc(db, 'organizations', orgSlug, 'shipments', id)
     await deleteDoc(ref)
+    await fetchShipments()
   }
 
-  return { shipments, loading, error, addShipment, updateShipment, removeShipment }
+  return { shipments, loading, error, refresh: fetchShipments, addShipment, updateShipment, removeShipment }
 }

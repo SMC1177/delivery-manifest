@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 // Mock useAdminData before importing the page
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ logout: vi.fn() }) }))
+vi.mock('../hooks/useSessionTimeout', () => ({
+  useSessionTimeout: () => ({ showWarning: false, remainingSeconds: 0, dismissWarning: vi.fn() }),
+}))
+vi.mock('../components/SessionWarningModal', () => ({ default: () => null }))
 vi.mock('../hooks/useAdminData', () => ({
   useAdminData: vi.fn(),
 }))

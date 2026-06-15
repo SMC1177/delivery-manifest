@@ -65,7 +65,7 @@ describe('Seam: ShipmentTable grouping logic', () => {
   })
 
   it('standalone rows (no tracking) are not grouped', () => {
-    // No tracking number → trackingKey: null, no grouping
+    // No tracking number -> trackingKey: null, no grouping
     expect(shipmentTableSource).toContain('trackingKey: null')
   })
 
@@ -89,7 +89,7 @@ describe('Seam: Cloud Functions polling dedup', () => {
   })
 
   it('UPS sync dedupes tracking numbers before polling', () => {
-    // Count occurrences of byTracking — should appear in both FedEx and UPS
+    // Count occurrences of byTracking -- should appear in both FedEx and UPS
     const matches = functionsSource.match(/byTracking = new Map\(\)/g)
     expect(matches.length).toBe(2)
   })
@@ -125,7 +125,7 @@ describe('Seam: Cloud Functions polling dedup', () => {
   })
 })
 
-// ─── Mock-based seam tests (verify behavior across tiers) ──────────────────
+// --- Mock-based seam tests (verify behavior across tiers) ------------------
 
 const mockGetDocs = vi.fn()
 const mockAddDoc = vi.fn()
@@ -154,12 +154,19 @@ vi.mock('../contexts/AuthContext', () => ({
 }))
 
 const { useShipments } = await import('../hooks/useShipments')
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 
-describe('Seam: tier 1 (tracking) → tier 2 (merge) → stops before tier 3', () => {
-  beforeEach(() => vi.clearAllMocks())
+describe('Seam: tier 1 (tracking) -> tier 2 (merge) -> stops before tier 3', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetDocs.mockResolvedValue({ docs: [], empty: true })
+  })
 
   it('tracking match with new Rx merges and never reaches patient dedup', async () => {
+    const { result } = renderHook(() => useShipments('test-org'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    mockGetDocs.mockClear()
+
     // Tier 1: tracking match found with existing Rx
     mockGetDocs.mockResolvedValueOnce({
       empty: false,
@@ -174,7 +181,6 @@ describe('Seam: tier 1 (tracking) → tier 2 (merge) → stops before tier 3', (
     })
     mockUpdateDoc.mockResolvedValueOnce()
 
-    const { result } = renderHook(() => useShipments('test-org'))
     let addResult
     await act(async () => {
       addResult = await result.current.addShipment({
@@ -184,16 +190,23 @@ describe('Seam: tier 1 (tracking) → tier 2 (merge) → stops before tier 3', (
       })
     })
 
-    // Merged in tier 2 — only 1 getDocs call (tracking check)
+    // Merged in tier 2 -- 2 getDocs calls (tracking check + post-write refetch)
     expect(addResult.merged).toBe(true)
-    expect(mockGetDocs).toHaveBeenCalledTimes(1)
+    expect(mockGetDocs).toHaveBeenCalledTimes(2)
   })
 })
 
-describe('Seam: tier 1 miss → tier 3 (patient+Rx) catches re-import', () => {
-  beforeEach(() => vi.clearAllMocks())
+describe('Seam: tier 1 miss -> tier 3 (patient+Rx) catches re-import', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetDocs.mockResolvedValue({ docs: [], empty: true })
+  })
 
   it('different tracking but same patient+Rx is caught by tier 3', async () => {
+    const { result } = renderHook(() => useShipments('test-org'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    mockGetDocs.mockClear()
+
     // Tier 1: no tracking match
     mockGetDocs.mockResolvedValueOnce({ empty: true })
     // Tier 3: patient match with all Rx present
@@ -208,7 +221,6 @@ describe('Seam: tier 1 miss → tier 3 (patient+Rx) catches re-import', () => {
       }],
     })
 
-    const { result } = renderHook(() => useShipments('test-org'))
     let addResult
     await act(async () => {
       addResult = await result.current.addShipment({
@@ -218,7 +230,7 @@ describe('Seam: tier 1 miss → tier 3 (patient+Rx) catches re-import', () => {
       })
     })
 
-    // Caught by tier 3 — 2 getDocs calls (tracking + patient)
+    // Caught by tier 3 -- 2 getDocs calls (tracking + patient)
     expect(addResult.skipped).toBe(true)
     expect(mockGetDocs).toHaveBeenCalledTimes(2)
     // Never reaches tier 4 (date check)
@@ -226,10 +238,17 @@ describe('Seam: tier 1 miss → tier 3 (patient+Rx) catches re-import', () => {
   })
 })
 
-describe('Seam: all 4 tiers pass → shipment created', () => {
-  beforeEach(() => vi.clearAllMocks())
+describe('Seam: all 4 tiers pass -> shipment created', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetDocs.mockResolvedValue({ docs: [], empty: true })
+  })
 
   it('brand new shipment passes all tiers and is created', async () => {
+    const { result } = renderHook(() => useShipments('test-org'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    mockGetDocs.mockClear()
+
     // Tier 1: no tracking match
     mockGetDocs.mockResolvedValueOnce({ empty: true })
     // Tier 3: no patient match
@@ -238,7 +257,6 @@ describe('Seam: all 4 tiers pass → shipment created', () => {
     mockGetDocs.mockResolvedValueOnce({ empty: false, docs: [] })
     mockAddDoc.mockResolvedValueOnce({ id: 'brand-new' })
 
-    const { result } = renderHook(() => useShipments('test-org'))
     let addResult
     await act(async () => {
       addResult = await result.current.addShipment({
@@ -251,8 +269,8 @@ describe('Seam: all 4 tiers pass → shipment created', () => {
     expect(addResult.id).toBe('brand-new')
     expect(addResult.skipped).toBeFalsy()
     expect(addResult.merged).toBe(false)
-    // All 3 getDocs calls made (tier 1 + tier 3 + tier 4)
-    expect(mockGetDocs).toHaveBeenCalledTimes(3)
+    // All 4 getDocs calls made (tier 1 + tier 3 + tier 4 + post-write refetch)
+    expect(mockGetDocs).toHaveBeenCalledTimes(4)
     expect(mockAddDoc).toHaveBeenCalledTimes(1)
   })
 })
