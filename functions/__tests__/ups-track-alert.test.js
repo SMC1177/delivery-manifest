@@ -189,6 +189,106 @@ describe('handleTrackAlertWebhook', () => {
     })
   })
 
+  describe('stale delivery guard prevents reused-tracking-number false deliveries', () => {
+    it('skips delivered update when actualDeliveryDate predates createdAt', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const existingShipment = {
+        trackingNumber: '1Z999AA10123456784',
+        status: 'in_transit',
+        createdAt: { toDate: () => new Date('2026-06-01') },
+      }
+      const { firestore, batchUpdate, batchCommit } = makeFirestoreMock([
+        makeDocSnapshot('organizations/acme/shipments/s1', existingShipment),
+      ])
+
+      const req = makeReq({
+        body: {
+          trackingNumber: '1Z999AA10123456784',
+          activityStatus: { type: 'D', code: '011', description: 'Delivered' },
+          actualDeliveryDate: '20260524', // May 24, 2026 — before June 1 createdAt
+          actualDeliveryTime: '143000',
+        },
+      })
+      const res = makeRes()
+
+      await handleTrackAlertWebhook(req, res, firestore, WEBHOOK_SECRET)
+
+      // Still returns 200 but no write to Firestore
+      expect(res.statusCode).toBe(200)
+      expect(batchUpdate).not.toHaveBeenCalled()
+      expect(batchCommit).not.toHaveBeenCalled()
+
+      // Warning was logged with key details
+      expect(warnSpy).toHaveBeenCalledOnce()
+      const warning = warnSpy.mock.calls[0][0]
+      expect(warning).toContain('1Z999AA10123456784')
+      expect(warning).toContain('20260524')
+      expect(warning).toContain('organizations/acme/shipments/s1')
+      expect(warning).toContain('stale')
+
+      warnSpy.mockRestore()
+    })
+
+    it('writes delivered update when actualDeliveryDate is on or after createdAt', async () => {
+      const existingShipment = {
+        trackingNumber: '1Z999AA10123456784',
+        status: 'in_transit',
+        createdAt: { toDate: () => new Date('2026-05-20') },
+      }
+      const { firestore, batchUpdate, batchCommit } = makeFirestoreMock([
+        makeDocSnapshot('organizations/acme/shipments/s1', existingShipment),
+      ])
+
+      const req = makeReq({
+        body: {
+          trackingNumber: '1Z999AA10123456784',
+          activityStatus: { type: 'D', code: '011', description: 'Delivered' },
+          actualDeliveryDate: '20260524', // May 24, 2026 — after May 20 createdAt
+          actualDeliveryTime: '143000',
+        },
+      })
+      const res = makeRes()
+
+      await handleTrackAlertWebhook(req, res, firestore, WEBHOOK_SECRET)
+
+      expect(res.statusCode).toBe(200)
+      expect(batchUpdate).toHaveBeenCalledOnce()
+      const [_ref, updates] = batchUpdate.mock.calls[0]
+      expect(updates.status).toBe('delivered')
+      expect(updates.deliveredAt).toBeInstanceOf(Date)
+      expect(batchCommit).toHaveBeenCalledOnce()
+    })
+
+    it('writes delivered update when createdAt is missing (guard returns false)', async () => {
+      const existingShipment = {
+        trackingNumber: '1Z999AA10123456784',
+        status: 'in_transit',
+        // no createdAt — isStaleDelivery returns false on missing input
+      }
+      const { firestore, batchUpdate, batchCommit } = makeFirestoreMock([
+        makeDocSnapshot('organizations/acme/shipments/s1', existingShipment),
+      ])
+
+      const req = makeReq({
+        body: {
+          trackingNumber: '1Z999AA10123456784',
+          activityStatus: { type: 'D', code: '011', description: 'Delivered' },
+          actualDeliveryDate: '20260524',
+          actualDeliveryTime: '143000',
+        },
+      })
+      const res = makeRes()
+
+      await handleTrackAlertWebhook(req, res, firestore, WEBHOOK_SECRET)
+
+      expect(res.statusCode).toBe(200)
+      expect(batchUpdate).toHaveBeenCalledOnce()
+      const [_ref, updates] = batchUpdate.mock.calls[0]
+      expect(updates.status).toBe('delivered')
+      expect(batchCommit).toHaveBeenCalledOnce()
+    })
+  })
+
   describe('method guard (405 enforced by the onRequest wrapper in index.js)', () => {
     // handleTrackAlertWebhook itself is only called after the method check, so
     // we test: (a) that a valid POST actually reaches the handler and returns 200,

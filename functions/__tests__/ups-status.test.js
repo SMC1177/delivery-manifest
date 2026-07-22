@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mapUpsStatus } from '../ups-status.js'
+import { mapUpsStatus, deriveUpsStatusContext, isStaleDelivery } from '../ups-status.js'
 
 describe('mapUpsStatus', () => {
   describe('description-first: delivered', () => {
@@ -221,5 +221,315 @@ describe('UPS status mapping seam: mapUpsStatus → sync pipeline', () => {
 
   it('description "Return to Sender" + code 005 maps to exception (not in_transit)', () => {
     expect(mapUpsStatus({ code: '005', description: 'Return to Sender' })).toBe('exception')
+  })
+})
+
+describe('deriveUpsStatusContext', () => {
+  it('returns all-null for null pkg', () => {
+    expect(deriveUpsStatusContext(null)).toEqual({
+      type: null,
+      code: null,
+      description: null
+    })
+  })
+
+  it('returns all-null for undefined pkg', () => {
+    expect(deriveUpsStatusContext(undefined)).toEqual({
+      type: null,
+      code: null,
+      description: null
+    })
+  })
+
+  it('falls back to currentStatus when activity is missing', () => {
+    const pkg = {
+      currentStatus: { type: 'D', code: '003', description: 'Delivered' }
+    }
+    expect(deriveUpsStatusContext(pkg)).toEqual({
+      type: 'D',
+      code: '003',
+      description: 'Delivered'
+    })
+  })
+
+  it('falls back to currentStatus when activity is empty array', () => {
+    const pkg = {
+      currentStatus: { type: 'I', code: '002', description: 'In Transit' },
+      activity: []
+    }
+    expect(deriveUpsStatusContext(pkg)).toEqual({
+      type: 'I',
+      code: '002',
+      description: 'In Transit'
+    })
+  })
+
+  it('prefers newest activity status over a conflicting currentStatus', () => {
+    const pkg = {
+      currentStatus: { type: 'D', code: '003', description: 'Delivered' },
+      activity: [
+        {
+          date: '20260720',
+          time: '080000',
+          status: { type: 'I', code: '002', description: 'In Transit' }
+        }
+      ]
+    }
+    // Activity says In Transit, currentStatus says Delivered — prefer activity
+    expect(deriveUpsStatusContext(pkg)).toEqual({
+      type: 'I',
+      code: '002',
+      description: 'In Transit'
+    })
+  })
+
+  it('picks newest activity when array is out of order', () => {
+    const pkg = {
+      activity: [
+        {
+          date: '20260718',
+          time: '120000',
+          status: { type: 'I', code: '002', description: 'In Transit' }
+        },
+        {
+          date: '20260720',
+          time: '090000',
+          status: { type: 'D', code: '003', description: 'Delivered' }
+        },
+        {
+          date: '20260719',
+          time: '150000',
+          status: { type: 'O', code: '004', description: 'Out for Delivery' }
+        }
+      ]
+    }
+    // Latest is 20260720, even though it's index 1 in the array
+    expect(deriveUpsStatusContext(pkg)).toEqual({
+      type: 'D',
+      code: '003',
+      description: 'Delivered'
+    })
+  })
+
+  it('handles same-date, later-time ordering', () => {
+    const pkg = {
+      activity: [
+        {
+          date: '20260720',
+          time: '080000',
+          status: { type: 'I', code: '002', description: 'Arrived at Facility' }
+        },
+        {
+          date: '20260720',
+          time: '143000',
+          status: { type: 'D', code: '003', description: 'Delivered' }
+        }
+      ]
+    }
+    expect(deriveUpsStatusContext(pkg)).toEqual({
+      type: 'D',
+      code: '003',
+      description: 'Delivered'
+    })
+  })
+
+  it('description fallback: prefers status-level description over activity-level', () => {
+    const pkg = {
+      currentStatus: { type: 'D', code: '003', description: 'Status desc' },
+      activity: [
+        {
+          date: '20260720',
+          time: '080000',
+          status: { type: 'D', code: '003' }, // no description on status
+          description: 'Activity-level desc'
+        }
+      ]
+    }
+    const result = deriveUpsStatusContext(pkg)
+    // src is latest.status (which has no description),
+    // so fallback to latest.description
+    expect(result.type).toBe('D')
+    expect(result.code).toBe('003')
+    expect(result.description).toBe('Activity-level desc')
+  })
+
+  it('description fallback: uses currentStatus.description as last resort', () => {
+    const pkg = {
+      currentStatus: { type: 'I', code: '002', description: 'Current desc' },
+      activity: [
+        {
+          date: '20260720',
+          time: '080000',
+          status: { type: 'I', code: '002' } // no description
+          // no activity-level description either
+        }
+      ]
+    }
+    const result = deriveUpsStatusContext(pkg)
+    expect(result.type).toBe('I')
+    expect(result.code).toBe('002')
+    expect(result.description).toBe('Current desc')
+  })
+
+  it('handles activity entries with missing status field gracefully', () => {
+    const pkg = {
+      currentStatus: { type: 'I', code: '002', description: 'In Transit' },
+      activity: [
+        {
+          date: '20260720',
+          time: '080000'
+          // no status key at all
+        }
+      ]
+    }
+    const result = deriveUpsStatusContext(pkg)
+    // latest.status is undefined, so falls back to currentStatus
+    expect(result.type).toBe('I')
+    expect(result.code).toBe('002')
+    expect(result.description).toBe('In Transit')
+  })
+
+  it('returns null type/code when nothing is available', () => {
+    const pkg = {
+      activity: [
+        {
+          date: '20260720',
+          time: '080000'
+          // no status, no description
+        }
+      ]
+    }
+    expect(deriveUpsStatusContext(pkg)).toEqual({
+      type: null,
+      code: null,
+      description: null
+    })
+  })
+
+  it('handles null activity (not an array)', () => {
+    const pkg = {
+      currentStatus: { type: 'D', code: '003', description: 'Delivered' },
+      activity: null
+    }
+    expect(deriveUpsStatusContext(pkg)).toEqual({
+      type: 'D',
+      code: '003',
+      description: 'Delivered'
+    })
+  })
+})
+
+describe('isStaleDelivery', () => {
+  // --- Delivery strictly before createdAt → stale ---
+  it('returns true when delivery is strictly before createdAt (different day)', () => {
+    // delivery: 2026-05-12, createdAt: 2026-07-16
+    expect(isStaleDelivery('20260512', new Date('2026-07-16T00:00:00Z'))).toBe(true)
+  })
+
+  it('returns true for delivery YYYYMMDD string before createdAt Date', () => {
+    expect(isStaleDelivery('20260101', new Date('2026-01-02T00:00:00Z'))).toBe(true)
+  })
+
+  it('returns true when createdAt is an ISO string', () => {
+    expect(isStaleDelivery('20260512', '2026-07-16T00:00:00Z')).toBe(true)
+  })
+
+  // --- Same calendar day → NOT stale ---
+  it('returns false when delivery and createdAt share the same calendar day', () => {
+    expect(isStaleDelivery('20260716', new Date('2026-07-16T15:30:00Z'))).toBe(false)
+  })
+
+  it('returns false when delivery is on the same day regardless of time', () => {
+    expect(isStaleDelivery('20260716', new Date('2026-07-16T23:59:59Z'))).toBe(false)
+  })
+
+  // --- Delivery after createdAt → NOT stale ---
+  it('returns false when delivery is after createdAt', () => {
+    expect(isStaleDelivery('20260720', new Date('2026-07-16T00:00:00Z'))).toBe(false)
+  })
+
+  it('returns false when delivery is day after createdAt', () => {
+    expect(isStaleDelivery('20260717', new Date('2026-07-16T00:00:00Z'))).toBe(false)
+  })
+
+  // --- Missing/invalid deliveryDate → false ---
+  it('returns false for null deliveryDate', () => {
+    expect(isStaleDelivery(null, new Date('2026-07-16T00:00:00Z'))).toBe(false)
+  })
+
+  it('returns false for undefined deliveryDate', () => {
+    expect(isStaleDelivery(undefined, new Date('2026-07-16T00:00:00Z'))).toBe(false)
+  })
+
+  it('returns false for empty string deliveryDate', () => {
+    expect(isStaleDelivery('', new Date('2026-07-16T00:00:00Z'))).toBe(false)
+  })
+
+  it('returns false for non-date string deliveryDate', () => {
+    expect(isStaleDelivery('garbage', new Date('2026-07-16T00:00:00Z'))).toBe(false)
+  })
+
+  // --- Missing createdAt → false ---
+  it('returns false for null createdAt', () => {
+    expect(isStaleDelivery('20260512', null)).toBe(false)
+  })
+
+  it('returns false for undefined createdAt', () => {
+    expect(isStaleDelivery('20260512', undefined)).toBe(false)
+  })
+
+  // --- Firestore Timestamp createdAt ---
+  it('handles Firestore Timestamp with toDate() method', () => {
+    const ts = {
+      toDate: () => new Date('2026-07-16T00:00:00Z')
+    }
+    expect(isStaleDelivery('20260512', ts)).toBe(true)
+  })
+
+  // --- { _seconds } createdAt ---
+  it('handles { _seconds } plain object createdAt', () => {
+    // 2026-07-16T00:00:00Z = 1784246400 seconds since epoch
+    const sec = Math.floor(new Date('2026-07-16T00:00:00Z').getTime() / 1000)
+    // delivery 2026-05-12 is before 2026-07-16
+    expect(isStaleDelivery('20260512', { _seconds: sec })).toBe(true)
+  })
+
+  it('handles { _seconds } with same-day delivery', () => {
+    // 2026-07-16T12:00:00Z
+    const sec = Math.floor(new Date('2026-07-16T12:00:00Z').getTime() / 1000)
+    expect(isStaleDelivery('20260716', { _seconds: sec })).toBe(false)
+  })
+
+  // --- Date object deliveryDate ---
+  it('accepts Date object for deliveryDate', () => {
+    expect(
+      isStaleDelivery(
+        new Date('2026-05-12T00:00:00Z'),
+        new Date('2026-07-16T00:00:00Z')
+      )
+    ).toBe(true)
+  })
+
+  it('accepts Date object for deliveryDate — same day', () => {
+    expect(
+      isStaleDelivery(
+        new Date('2026-07-16T12:00:00Z'),
+        new Date('2026-07-16T08:00:00Z')
+      )
+    ).toBe(false)
+  })
+
+  // --- Both missing/invalid → false ---
+  it('returns false when both are null', () => {
+    expect(isStaleDelivery(null, null)).toBe(false)
+  })
+
+  it('returns false when both are undefined', () => {
+    expect(isStaleDelivery(undefined, undefined)).toBe(false)
+  })
+
+  // --- Graceful: invalid Date object ---
+  it('returns false for invalid Date deliveryDate', () => {
+    expect(isStaleDelivery(new Date('invalid'), new Date('2026-07-16T00:00:00Z'))).toBe(false)
   })
 })

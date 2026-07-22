@@ -5,7 +5,7 @@ import { defineSecret } from 'firebase-functions/params'
 import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { mapFedExStatus } from './fedex-status.js'
-import { mapUpsStatus } from './ups-status.js'
+import { mapUpsStatus, deriveUpsStatusContext, isStaleDelivery } from './ups-status.js'
 import { detectCarrier } from './carrier-detection.js'
 import { handleTrackAlertWebhook, subscribeTrackingNumbers } from './ups-track-alert.js'
 
@@ -490,19 +490,7 @@ export const trackUps = onCall(
         return { found: false, trackingNumber, status: null, details: null }
       }
 
-      const sortedActivity = [...(pkg.activity || [])].sort((a, b) => {
-        const da = `${a.date || ''}${a.time || ''}`
-        const db = `${b.date || ''}${b.time || ''}`
-        return db.localeCompare(da)
-      })
-      const latestActivity = sortedActivity[0]
-      const usesLatestActivity = !pkg.currentStatus
-      const currentStatus = pkg.currentStatus || latestActivity?.status
-      const statusContext = {
-        type: currentStatus?.type || null,
-        code: currentStatus?.code || null,
-        description: currentStatus?.description || (usesLatestActivity ? latestActivity?.description : null) || null,
-      }
+      const statusContext = deriveUpsStatusContext(pkg)
       const mappedStatus = mapUpsStatus(statusContext)
 
       const deliveryDate = pkg.deliveryDate?.[0]
@@ -602,18 +590,12 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
           return db.localeCompare(da)
         })
         const latestActivity = sortedActivity[0]
-        const usesLatestActivity = !pkg.currentStatus
-        const currentStatus = pkg.currentStatus || latestActivity?.status
-        const statusContext = {
-          type: currentStatus?.type || null,
-          code: currentStatus?.code || null,
-          description: currentStatus?.description || (usesLatestActivity ? latestActivity?.description : null) || null,
-        }
+        const statusContext = deriveUpsStatusContext(pkg)
         if (!statusContext.type && !statusContext.code && !statusContext.description) {
-          console.warn(`UPS sync: no status context for TN ${tn}, currentStatus=${JSON.stringify(currentStatus)}`)
+          console.warn(`UPS sync: no status context for TN ${tn}, statusContext=${JSON.stringify(statusContext)}`)
         }
         const newStatus = mapUpsStatus(statusContext)
-        console.warn(`UPS DIAG2 TN=${tn}: pkgKeys=[${Object.keys(pkg).join(',')}], milestones=${JSON.stringify(pkg.milestones)}, deliveryDate=${JSON.stringify(pkg.deliveryDate)}, deliveryInfo=${JSON.stringify(pkg.deliveryInformation)}`)
+
 
         return { tn, newStatus, currentStatus: statusContext, latestActivity }
       })
@@ -638,6 +620,10 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
         const newRank = statusRank[newStatus] ?? -1
         if (newRank < currentRank) {
           console.warn(`UPS sync: TN ${tn} — refusing to downgrade ${shipment.status}(${currentRank}) → ${newStatus}(${newRank})`)
+          continue
+        }
+        if (newStatus === 'delivered' && isStaleDelivery(latestActivity?.date, shipment.createdAt)) {
+          console.warn(`UPS sync: TN ${tn} — skipping stale delivery (activity date ${latestActivity?.date} predates shipment createdAt), doc=${shipDoc.ref.path}`)
           continue
         }
 
@@ -689,44 +675,7 @@ async function syncUpsForOrg(orgSlug, clientId, clientSecret) {
   return { updated, checked: docsWithTracking.length, apiCalls, skippedStale }
 }
 
-/**
- * Scheduled function: runs daily at 7 AM CT and syncs all active
- * UPS shipments across all organizations.
- */
-export const scheduledUpsStatusSync = onSchedule(
-  {
-    schedule: '0 7 * * *',
-    timeZone: 'America/Chicago',
-    secrets: [upsClientId, upsClientSecret, upsMode],
-    timeoutSeconds: 540,
-    memory: '1GiB',
-  },
-  async () => {
-    const orgsSnap = await firestore.collection('organizations').get()
-    if (orgsSnap.empty) {
-      console.log('UPS sync: no organizations found, skipping.')
-      return
-    }
-    let totalUpdated = 0
-    let totalChecked = 0
 
-    for (const orgDoc of orgsSnap.docs) {
-      try {
-        const result = await syncUpsForOrg(
-          orgDoc.id,
-          upsClientId.value(),
-          upsClientSecret.value()
-        )
-        totalUpdated += result.updated
-        totalChecked += result.checked
-      } catch (err) {
-        console.error(`UPS sync failed for org ${orgDoc.id}:`, err.message)
-      }
-    }
-
-    console.log(`UPS sync complete: ${totalUpdated}/${totalChecked} shipments updated`)
-  }
-)
 
 /**
  * Manual refresh: callable from frontend to sync all active UPS shipments

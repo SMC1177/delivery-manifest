@@ -1,4 +1,5 @@
 import { FieldValue } from 'firebase-admin/firestore'
+import { isStaleDelivery } from './ups-status.js'
 
 // Lifecycle rank: higher rank wins — never downgrade
 const STATUS_RANK = {
@@ -121,6 +122,14 @@ export async function handleTrackAlertWebhook(req, res, firestore, webhookSecret
       continue
     }
 
+    // 4. Stale-delivery guard: skip if delivery date predates shipment creation
+    if (newStatus === 'delivered' && isStaleDelivery(body.actualDeliveryDate, shipment.createdAt)) {
+      console.warn(
+        `UPS Track Alert: TN=${trackingNumber} — stale delivery (actualDeliveryDate=${body.actualDeliveryDate}) predates createdAt for doc ${doc.ref.path}; skipping`
+      )
+      continue
+    }
+
     const updates = {
       status: newStatus,
       upsStatus: statusDescription,
@@ -128,7 +137,7 @@ export async function handleTrackAlertWebhook(req, res, firestore, webhookSecret
       updatedBy: 'system:ups-track-alert',
     }
 
-    // 4. Set deliveredAt from actual delivery fields when available
+    // 5. Set deliveredAt from actual delivery fields when available
     if (newStatus === 'delivered') {
       const deliveredAt = parseUpsDateTime(body.actualDeliveryDate, body.actualDeliveryTime)
       updates.deliveredAt = deliveredAt ?? FieldValue.serverTimestamp()
@@ -137,7 +146,7 @@ export async function handleTrackAlertWebhook(req, res, firestore, webhookSecret
     pendingUpdates.push({ ref: doc.ref, updates })
   }
 
-  // 5. Apply Firestore writes in a batch
+  // 6. Apply Firestore writes in a batch
   if (pendingUpdates.length > 0) {
     const WRITE_BATCH_SIZE = 500
     for (let i = 0; i < pendingUpdates.length; i += WRITE_BATCH_SIZE) {
@@ -153,7 +162,7 @@ export async function handleTrackAlertWebhook(req, res, firestore, webhookSecret
     console.log(`UPS Track Alert: no updates needed for TN=${trackingNumber} (all guarded or same status)`)
   }
 
-  // 6. Return 200 quickly — UPS expects a fast response
+  // 7. Return 200 quickly — UPS expects a fast response
   res.status(200).send('OK')
 }
 

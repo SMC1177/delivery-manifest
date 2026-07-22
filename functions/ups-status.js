@@ -98,3 +98,96 @@ export function mapUpsStatus(status) {
 
   return null
 }
+
+/**
+ * Derive the best status context from a UPS API package object.
+ *
+ * Prefers the newest activity scan's status over `currentStatus`, because
+ * UPS sometimes returns a stale `currentStatus` from a prior/reused tracking
+ * number. Sorts activity entries newest-first by concatenated date+time.
+ *
+ * @param {object} pkg  UPS package object with shape { currentStatus, activity }
+ * @returns {{ type: string|null, code: string|null, description: string|null }}
+ */
+export function deriveUpsStatusContext(pkg) {
+  if (!pkg) return { type: null, code: null, description: null }
+
+  const activity = Array.isArray(pkg.activity) ? pkg.activity : []
+
+  // Sort newest-first by concatenated date+time
+  const sorted = [...activity].sort(
+    (a, b) =>
+      (`${b.date || ''}${b.time || ''}`).localeCompare(
+        `${a.date || ''}${a.time || ''}`
+      )
+  )
+
+  const latest = sorted[0]
+
+  // Prefer latest activity.status over currentStatus
+  const src = latest?.status || pkg.currentStatus || null
+
+  const description =
+    src?.description ||
+    latest?.description ||
+    pkg.currentStatus?.description ||
+    null
+
+  return {
+    type: src?.type || null,
+    code: src?.code || null,
+    description
+  }
+}
+
+/**
+ * Detect a stale/reused-tracking-number "delivered" event.
+ *
+ * Returns true when the delivery calendar day is STRICTLY BEFORE the
+ * shipment's creation calendar day — implying a prior tracking record,
+ * not the current shipment. Same-day or later delivery returns false.
+ *
+ * @param {string|Date|null|undefined} deliveryDate  'YYYYMMDD' string, Date, or falsy
+ * @param {*} createdAt  Firestore Timestamp, { _seconds }, Date, ISO string, or falsy
+ * @returns {boolean}
+ */
+export function isStaleDelivery(deliveryDate, createdAt) {
+  // --- Normalize deliveryDate to a UTC Date at midnight ---
+  let dd = null
+  if (deliveryDate instanceof Date) {
+    dd = new Date(Date.UTC(
+      deliveryDate.getUTCFullYear(),
+      deliveryDate.getUTCMonth(),
+      deliveryDate.getUTCDate()
+    ))
+  } else if (typeof deliveryDate === 'string' && /^\d{8}$/.test(deliveryDate)) {
+    const y = +deliveryDate.slice(0, 4)
+    const m = +deliveryDate.slice(4, 6) - 1
+    const d = +deliveryDate.slice(6, 8)
+    dd = new Date(Date.UTC(y, m, d))
+  }
+  if (!dd || isNaN(dd.getTime())) return false
+
+  // --- Normalize createdAt to a UTC Date at midnight ---
+  let ca = null
+  if (createdAt instanceof Date) {
+    ca = createdAt
+  } else if (createdAt && typeof createdAt.toDate === 'function') {
+    // Firestore Timestamp
+    ca = createdAt.toDate()
+  } else if (createdAt && typeof createdAt._seconds === 'number') {
+    ca = new Date(createdAt._seconds * 1000)
+  } else if (typeof createdAt === 'string') {
+    ca = new Date(createdAt)
+  }
+  if (!ca || isNaN(ca.getTime())) return false
+
+  // Compare at DAY granularity (UTC midnight)
+  const caDay = new Date(Date.UTC(
+    ca.getUTCFullYear(),
+    ca.getUTCMonth(),
+    ca.getUTCDate()
+  ))
+
+  return dd.getTime() < caDay.getTime()
+}
