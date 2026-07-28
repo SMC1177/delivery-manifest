@@ -9,7 +9,6 @@ import { useAuditLog, useAuditLogEntries } from '../hooks/useAuditLog'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../components/Toast'
 import { formatCentralTime } from '../hooks/useShipments'
-import TotpSetup from '../components/TotpSetup'
 import ScrubConfirmModal from '../components/ScrubConfirmModal'
 import { scrubFieldFromShipments, SCRUBBABLE_FIELDS } from '../lib/scrubField'
 import ColumnMappingScreen from '../components/ColumnMappingScreen'
@@ -156,7 +155,7 @@ export default function SettingsPage() {
   const { invites, createInvite, deleteInvite } = useInvites(slug)
   const { logAction } = useAuditLog(slug)
   const { entries: auditEntries, loading: auditLoading } = useAuditLogEntries(slug, 50)
-  const { userData, unenrollMfa } = useAuth()
+  const { userData } = useAuth()
   const addToast = useToast()
 
   // Member add mode
@@ -582,48 +581,6 @@ export default function SettingsPage() {
           addToast={addToast}
         />
       )}
-
-      {/* 2FA Setup / Management */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-        {userData && !userData.mfaEnrolled ? (
-          <>
-            <TotpSetup
-              onComplete={() => addToast('2FA enabled successfully!')}
-            />
-            {org?.settings?.requireMfa && (
-              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                Your organization requires 2FA. Please set it up to continue using the app.
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="text-2xl">🔐</div>
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">Two-Factor Authentication</h3>
-                <p className="text-sm text-green-600 font-medium">Enabled — Authenticator App</p>
-              </div>
-            </div>
-            {!org?.settings?.requireMfa && (
-              <button
-                onClick={async () => {
-                  if (!window.confirm('Disable two-factor authentication? Your account will be less secure.')) return
-                  try {
-                    await unenrollMfa()
-                    addToast('2FA disabled')
-                  } catch {
-                    addToast('Failed to disable 2FA. You may need to sign out and back in first.', 'error')
-                  }
-                }}
-                className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-              >
-                Disable 2FA
-              </button>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* Require MFA — admin only */}
       {isAdmin && (

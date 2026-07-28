@@ -1,10 +1,8 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { useOrgSettings } from '../hooks/useOrgSettings'
 
 export default function ProtectedRoute({ children, requireOrg = true }) {
   const { user, userData, orgSlug, loading } = useAuth()
-  const { settings: orgSettings } = useOrgSettings(orgSlug)
   const location = useLocation()
 
   if (loading) {
@@ -30,19 +28,6 @@ export default function ProtectedRoute({ children, requireOrg = true }) {
     !location.pathname.includes('/welcome')
   ) {
     return <Navigate to={`/${orgSlug}/welcome`} replace />
-  }
-
-  // Enforce MFA if org requires it — redirect to settings to set up 2FA
-  // (allow settings page so users can actually enroll)
-  if (
-    requireOrg &&
-    orgSlug &&
-    orgSettings?.requireMfa &&
-    userData &&
-    !userData.mfaEnrolled &&
-    !location.pathname.includes('/settings')
-  ) {
-    return <Navigate to={`/${orgSlug}/settings`} replace />
   }
 
   return children

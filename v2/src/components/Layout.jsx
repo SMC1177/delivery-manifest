@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, Outlet, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useOrganization } from '../hooks/useOrganization'
+import { useOrgSettings } from '../hooks/useOrgSettings'
 import { useSessionTimeout } from '../hooks/useSessionTimeout'
 import SessionWarningModal from './SessionWarningModal'
 import AccountModal from './AccountModal'
@@ -14,6 +15,8 @@ export default function Layout() {
   const [showAccount, setShowAccount] = useState(false)
 
   const { showWarning, remainingSeconds, dismissWarning } = useSessionTimeout(30, logout)
+  const { settings: orgSettings } = useOrgSettings(slug)
+  const mfaRequired = orgSettings?.requireMfa && userData && !userData.mfaEnrolled
 
   const navLinks = [
     { to: `/${slug}/dashboard`, label: 'Dashboard' },
@@ -110,6 +113,12 @@ export default function Layout() {
                 {link.label}
               </Link>
             ))}
+            <button
+              onClick={() => setShowAccount(true)}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            >
+              Account
+            </button>
           </nav>
         </div>
       </header>
@@ -126,9 +135,10 @@ export default function Layout() {
       )}
 
       <AccountModal
-        isOpen={showAccount}
+        isOpen={showAccount || mfaRequired}
         onClose={() => setShowAccount(false)}
         userName={userData?.name}
+        mfaRequired={mfaRequired}
       />
     </div>
   )
