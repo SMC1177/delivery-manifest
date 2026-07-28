@@ -19,7 +19,13 @@ service cloud.firestore {
 
     // User profiles - users can read/write their own
     match /userProfiles/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      // An org admin may CREATE a profile for a staff member they are setting up
+      // manually (SettingsPage handleManualAdd). Scoped to an org they administer:
+      // isAdmin() does a get() on that org's members doc and requires role == 'admin'.
+      allow create: if isSignedIn()
+        && (request.auth.uid == userId || isAdmin(request.resource.data.orgSlug));
+      allow update, delete: if isSignedIn() && request.auth.uid == userId;
     }
 
     // Organizations

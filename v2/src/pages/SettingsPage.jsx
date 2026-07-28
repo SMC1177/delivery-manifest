@@ -397,17 +397,21 @@ export default function SettingsPage() {
       return
     }
     setAddingMember(true)
+    let secondaryApp = null
+    let secondaryAuth = null
+    let deleteAppFn = null
     try {
       // Use a secondary Firebase app to create user without signing out admin
       const { initializeApp, deleteApp } = await import('firebase/app')
+      deleteAppFn = deleteApp
       const { getAuth: getAuth2, createUserWithEmailAndPassword: createUser, sendEmailVerification } = await import('firebase/auth')
       const { doc: docRef, setDoc: setDocFn, serverTimestamp: st } = await import('firebase/firestore')
 
-      const secondaryApp = initializeApp(
+      secondaryApp = initializeApp(
         JSON.parse(JSON.stringify(auth.app.options)),
         'secondary-' + Date.now()
       )
-      const secondaryAuth = getAuth2(secondaryApp)
+      secondaryAuth = getAuth2(secondaryApp)
 
       const cred = await createUser(secondaryAuth, manualEmail.trim(), manualPassword.trim())
       const newUid = cred.user.uid
@@ -436,10 +440,6 @@ export default function SettingsPage() {
         addedBy: userData?.name || 'admin',
       })
 
-      // Sign out of secondary app and clean up
-      await secondaryAuth.signOut()
-      await deleteApp(secondaryApp)
-
       await logAction('member.added', newUid, { name: manualName.trim(), email: manualEmail.trim(), role: manualRole })
       addToast(`${manualName.trim()} added successfully. Verification email sent.`)
       setManualName('')
@@ -447,12 +447,23 @@ export default function SettingsPage() {
       setManualPassword('')
       setManualRole('staff')
     } catch (err) {
+      console.error('Manual add failed:', err)
       if (err.code === 'auth/email-already-in-use') {
         addToast('That email is already registered', 'error')
       } else {
-        addToast(err.message, 'error')
+        addToast(err.message || 'Failed to add member', 'error')
       }
     } finally {
+      try {
+        if (secondaryAuth) await secondaryAuth.signOut()
+      } catch (e) {
+        console.error('Secondary app cleanup failed', e)
+      }
+      try {
+        if (secondaryApp && deleteAppFn) await deleteAppFn(secondaryApp)
+      } catch (e) {
+        console.error('Secondary app cleanup failed', e)
+      }
       setAddingMember(false)
     }
   }
