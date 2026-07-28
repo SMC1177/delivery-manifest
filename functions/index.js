@@ -892,3 +892,6 @@ export {
   getOrgSettings,
   updateOrgSettings,
 } from './admin-settings.js'
+
+// --- Invite-link preauth validation (unauthenticated onCall) ---
+export { validateInvite } from './validate-invite.js'

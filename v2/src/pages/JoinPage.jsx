@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams, Link, useNavigate, Navigate } from 'react-router-dom'
-import { doc, getDoc } from 'firebase/firestore'
-import { db } from '../lib/firebase'
+import { getFunctions, httpsCallable } from 'firebase/functions'
 import { useAuth } from '../contexts/AuthContext'
-import { findInviteByCode, redeemInvite } from '../hooks/useInvites'
+import { redeemInvite } from '../hooks/useInvites'
 import { validatePassword, getPasswordStrength } from '../lib/password'
 
 export default function JoinPage() {
@@ -34,40 +33,28 @@ export default function JoinPage() {
       }
 
       try {
-        // Check org exists
-        const orgSnap = await getDoc(doc(db, 'organizations', slug))
-        if (!orgSnap.exists()) {
-          setInviteError('Organization not found.')
-          setLoadingInvite(false)
-          return
-        }
-        setOrgName(orgSnap.data().name)
+        const validateInviteCallable = httpsCallable(getFunctions(), 'validateInvite')
+        const result = await validateInviteCallable({ slug, code: inviteCode })
+        const { valid, orgName: name, role, inviteId, reason } = result.data
 
-        // Check invite code
-        const inv = await findInviteByCode(slug, inviteCode)
-        if (!inv) {
-          setInviteError('Invalid or expired invite code.')
-          setLoadingInvite(false)
-          return
-        }
-
-        // Check expiration
-        const expiresAt = inv.expiresAt?.toDate ? inv.expiresAt.toDate() : new Date(inv.expiresAt)
-        if (expiresAt < new Date()) {
-          setInviteError('This invite has expired.')
+        if (!valid) {
+          if (reason === 'invalid') {
+            setInviteError('Invalid or expired invite code.')
+          } else if (reason === 'expired') {
+            setInviteError('This invite has expired.')
+          } else if (reason === 'exhausted') {
+            setInviteError('This invite has reached its usage limit.')
+          } else {
+            setInviteError('Failed to validate invite.')
+          }
           setLoadingInvite(false)
           return
         }
 
-        // Check usage limits
-        if (inv.maxUses > 0 && inv.usedCount >= inv.maxUses) {
-          setInviteError('This invite has reached its usage limit.')
-          setLoadingInvite(false)
-          return
-        }
-
-        setInvite(inv)
-      } catch {
+        setOrgName(name)
+        setInvite({ id: inviteId, role })
+      } catch (err) {
+        console.error('validateInvite call failed:', err)
         setInviteError('Failed to validate invite.')
       } finally {
         setLoadingInvite(false)
