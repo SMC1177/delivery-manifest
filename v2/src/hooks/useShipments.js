@@ -181,6 +181,7 @@ export function useShipments(orgSlug) {
       date: shipDate,
       carrier: data.carrier || 'ups',
       status: data.status || 'pending',
+      archived: false,
       deliveredAt: null,
       shippedAt: null,
       createdAt: serverTimestamp(),

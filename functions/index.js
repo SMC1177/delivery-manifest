@@ -895,3 +895,6 @@ export {
 
 // --- Invite-link preauth validation (unauthenticated onCall) ---
 export { validateInvite } from './validate-invite.js'
+
+// --- Backfill archived flag for shipment documents (admin-only onCall) ---
+export { backfillArchivedFlag } from './backfill-archived.js'

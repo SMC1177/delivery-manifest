@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore'
+import { collection, doc, writeBatch, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
 
-export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap }) {
+export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap, filename }) {
   const { user, orgSlug } = useAuth()
   const addToast = useToast()
   const [importing, setImporting] = useState(false)
@@ -16,6 +16,7 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
     setImporting(true)
 
     try {
+      const importId = crypto.randomUUID()
       const colRef = collection(db, 'organizations', orgSlug, 'shipments')
       const BATCH_SIZE = 500
       let imported = 0
@@ -46,6 +47,10 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
             updatedAt: serverTimestamp(),
             createdBy: user.uid,
             updatedBy: user.uid,
+            archived: false,
+            importId,
+            importedAt: serverTimestamp(),
+            importFilename: filename || '',
           })
         }
         await batch.commit()
@@ -75,6 +80,14 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
         await batch.commit()
         updated += chunk.length
       }
+
+      // Write companion import record after shipments succeed
+      await setDoc(doc(db, 'organizations', orgSlug, 'imports', importId), {
+        filename: filename || '',
+        count: imported,
+        importedAt: serverTimestamp(),
+        importedBy: user.uid,
+      })
 
       const parts = []
       if (imported > 0) parts.push(`${imported} new`)
