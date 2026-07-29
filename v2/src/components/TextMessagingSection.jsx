@@ -9,7 +9,21 @@ function generateToken() {
   return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+function formatCredsDate(d) {
+  if (!d) return 'Unknown'
+  try {
+    const dt = typeof d.toDate === 'function' ? d.toDate() : new Date(d)
+    if (isNaN(dt.getTime())) return 'Unknown'
+    return dt.toLocaleString()
+  } catch {
+    return 'Unknown'
+  }
+}
+
 function CredentialsForm({ value, onSave, onCancel }) {
+  const credsConfigured = value?.credsConfigured === true
+  const [showingReplace, setShowingReplace] = useState(false)
+
   const [draft, setDraft] = useState({
     clientId: '',
     clientSecret: '',
@@ -20,21 +34,58 @@ function CredentialsForm({ value, onSave, onCancel }) {
 
   function update(k, v) { setDraft({ ...draft, [k]: v }) }
 
+  // Configured state: show summary with Replace action
+  if (credsConfigured && !showingReplace) {
+    return (
+      <div className="space-y-2 border border-slate-200 rounded-lg p-3">
+        <div className="flex items-center gap-2">
+          <span className="text-green-600 font-medium text-sm">✓ Configured</span>
+        </div>
+        <div className="text-xs text-slate-500">
+          Last updated: {formatCredsDate(value?.credsUpdatedAt)}
+          {value?.credsUpdatedBy ? ` by ${value.credsUpdatedBy}` : ''}
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setShowingReplace(true)}
+            className="px-3 py-1 text-sm rounded border border-slate-300 hover:bg-slate-50">
+            Replace credentials
+          </button>
+          <button type="button" onClick={onCancel} className="px-3 py-1 text-sm rounded border">Cancel</button>
+        </div>
+      </div>
+    )
+  }
+
+  // First-time setup or replace: show empty form with autofill disabled
   return (
     <div className="space-y-2 border border-slate-200 rounded-lg p-3">
+      {credsConfigured && showingReplace && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+          All three credential values must be re-entered together — partial saves are rejected.
+        </p>
+      )}
       <input className="w-full px-2 py-1 border rounded text-sm" placeholder="Client ID"
+        name="sms-provider-client-id" autoComplete="off"
         value={draft.clientId} onChange={(e) => update('clientId', e.target.value)} />
       <input className="w-full px-2 py-1 border rounded text-sm" placeholder="Client Secret" type="password"
+        name="sms-provider-secret" autoComplete="new-password"
         value={draft.clientSecret} onChange={(e) => update('clientSecret', e.target.value)} />
       <textarea className="w-full px-2 py-1 border rounded text-sm font-mono" placeholder="JWT credential" rows={3}
+        name="sms-provider-jwt" autoComplete="off"
         value={draft.jwt} onChange={(e) => update('jwt', e.target.value)} />
       <input className="w-full px-2 py-1 border rounded text-sm" placeholder="Server (https://platform.ringcentral.com)"
         value={draft.server} onChange={(e) => update('server', e.target.value)} />
       <input className="w-full px-2 py-1 border rounded text-sm" placeholder="From Number (+1...)"
         value={draft.fromNumber} onChange={(e) => update('fromNumber', e.target.value)} />
       <div className="flex gap-2">
-        <button onClick={() => onSave(draft)} className="px-3 py-1 text-sm rounded bg-blue-600 text-white">Save</button>
-        <button onClick={onCancel} className="px-3 py-1 text-sm rounded border">Cancel</button>
+        <button type="button" onClick={() => onSave(draft)}
+          className="px-3 py-1 text-sm rounded bg-blue-600 text-white">Save</button>
+        {showingReplace ? (
+          <button type="button" onClick={() => setShowingReplace(false)}
+            className="px-3 py-1 text-sm rounded border">Cancel</button>
+        ) : (
+          <button type="button" onClick={onCancel} className="px-3 py-1 text-sm rounded border">Cancel</button>
+        )}
       </div>
     </div>
   )
@@ -175,7 +226,13 @@ export default function TextMessagingSection({ slug, enabledFields, addToast, lo
             {editingCreds ? (
               <div className="mt-2">
                 <CredentialsForm
-                  value={{ server: settings.ringcentral?.server, fromNumber: settings.ringcentral?.fromNumber }}
+                  value={{
+                    server: settings.ringcentral?.server,
+                    fromNumber: settings.ringcentral?.fromNumber,
+                    credsConfigured: settings.credsConfigured,
+                    credsUpdatedAt: settings.credsUpdatedAt,
+                    credsUpdatedBy: settings.credsUpdatedBy,
+                  }}
                   onSave={saveCreds}
                   onCancel={() => setEditingCreds(false)}
                 />

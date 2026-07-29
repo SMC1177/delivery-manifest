@@ -36,10 +36,48 @@ export const saveRingCentralCreds = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'Must be signed in.')
   }
 
-  const { orgSlug, clientId, clientSecret, jwt, server, fromNumber } = request.data || {}
+  const raw = request.data || {}
+  const { orgSlug, server, fromNumber } = raw
+  const clientId = typeof raw.clientId === 'string' ? raw.clientId.trim() : raw.clientId
+  const clientSecret = typeof raw.clientSecret === 'string' ? raw.clientSecret.trim() : raw.clientSecret
+  const jwt = typeof raw.jwt === 'string' ? raw.jwt.trim() : raw.jwt
 
-  if (!orgSlug || !clientId || !clientSecret || !jwt || !server || !fromNumber) {
-    throw new HttpsError('invalid-argument', 'orgSlug, clientId, clientSecret, jwt, server, and fromNumber are all required')
+  // Validate clientId — must be a non-empty string without @ (autofill signature)
+  if (!clientId || typeof clientId !== 'string' || clientId === '') {
+    throw new HttpsError(
+      'invalid-argument',
+      'clientId is required and must be a non-empty string. '
+      + 'Because credentials are stored as one secret, you must re-enter clientId, clientSecret and jwt together — partial saves are not supported.',
+    )
+  }
+  if (clientId.includes('@')) {
+    throw new HttpsError(
+      'invalid-argument',
+      'clientId looks like an email address — browser autofill may have filled it in. '
+      + 'A RingCentral Client ID is an opaque token, never an email. Clear the field and re-enter the correct value.',
+    )
+  }
+
+  // Validate clientSecret
+  if (!clientSecret || typeof clientSecret !== 'string' || clientSecret === '') {
+    throw new HttpsError(
+      'invalid-argument',
+      'clientSecret is required and must be a non-empty string. '
+      + 'Because credentials are stored as one secret, you must re-enter clientId, clientSecret and jwt together — partial saves are not supported.',
+    )
+  }
+
+  // Validate jwt
+  if (!jwt || typeof jwt !== 'string' || jwt === '') {
+    throw new HttpsError(
+      'invalid-argument',
+      'jwt is required and must be a non-empty string. '
+      + 'Because credentials are stored as one secret, you must re-enter clientId, clientSecret and jwt together — partial saves are not supported.',
+    )
+  }
+
+  if (!orgSlug || !server || !fromNumber) {
+    throw new HttpsError('invalid-argument', 'orgSlug, server, and fromNumber are all required')
   }
   if (typeof orgSlug !== 'string' || !/^[a-z0-9][a-z0-9-]*$/i.test(orgSlug)) {
     throw new HttpsError('invalid-argument', 'orgSlug must be a valid identifier')
