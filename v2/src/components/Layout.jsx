@@ -23,6 +23,9 @@ export default function Layout() {
     { to: `/${slug}/import`, label: 'Import' },
     { to: `/${slug}/settings`, label: 'Settings' },
   ]
+  if (userData?.role === 'admin') {
+    navLinks.push({ to: `/${slug}/archive`, label: 'Archive' })
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">

@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useShipments, getCentralTimeDateString, formatCentralTime } from '../hooks/useShipments'
 import { useAuditLog } from '../hooks/useAuditLog'
 import { useToast } from '../components/Toast'
+import { useOrganization } from '../hooks/useOrganization'
 import ShipmentTable from '../components/ShipmentTable'
 import ShipmentModal from '../components/ShipmentModal'
 import DeleteModal from '../components/DeleteModal'
@@ -29,10 +30,12 @@ export default function DashboardPage() {
   const { slug } = useParams()
   const { user, userData } = useAuth()
   const isViewer = userData?.role === 'viewer'
+  const { org } = useOrganization()
+  const backfillComplete = org?.archiveBackfillComplete === true
   const {
     shipments, loading, error, refresh,
     addShipment, updateShipment, removeShipment,
-  } = useShipments(slug)
+  } = useShipments(slug, { archived: false, backfillComplete })
   const { logAction } = useAuditLog(slug)
   const addToast = useToast()
 

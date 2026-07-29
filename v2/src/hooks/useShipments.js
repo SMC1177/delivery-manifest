@@ -31,8 +31,9 @@ export function formatCentralTime(date) {
   }).format(d)
 }
 
-export function useShipments(orgSlug) {
+export function useShipments(orgSlug, options = {}) {
   const { user } = useAuth()
+  const { archived = false, backfillComplete = false } = options
   const [shipments, setShipments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -45,7 +46,13 @@ export function useShipments(orgSlug) {
     }
     setLoading(true)
     try {
-      const snap = await getDocs(query(collection(db, 'organizations', orgSlug, 'shipments')))
+      const colRef = collection(db, 'organizations', orgSlug, 'shipments')
+      const constraints = archived
+        ? [where('archived', '==', true)]
+        : backfillComplete
+          ? [where('archived', '==', false)]
+          : []
+      const snap = await getDocs(query(colRef, ...constraints))
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
       docs.sort((a, b) => {
         const dateA = a.date || ''
@@ -60,7 +67,7 @@ export function useShipments(orgSlug) {
     } finally {
       setLoading(false)
     }
-  }, [orgSlug])
+  }, [orgSlug, archived, backfillComplete])
 
   useEffect(() => { fetchShipments() }, [fetchShipments])
 
