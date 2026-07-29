@@ -27,6 +27,20 @@ const STATUS_FILTERS = [
   { value: 'exception', label: 'Exception' },
 ]
 
+const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100, 200, 300]
+const DEFAULT_ROWS_PER_PAGE = 100
+
+function restoreRowsPerPage(slug) {
+  try {
+    const raw = localStorage.getItem(`dashboard_rowsPerPage_${slug}`)
+    const n = parseInt(raw, 10)
+    if (!isNaN(n) && n >= 10 && n <= 300) return n
+  } catch (e) {
+    console.error('Failed to read rowsPerPage from localStorage:', e)
+  }
+  return DEFAULT_ROWS_PER_PAGE
+}
+
 export default function DashboardPage() {
   const { slug } = useParams()
   const { user, userData } = useAuth()
@@ -67,7 +81,22 @@ export default function DashboardPage() {
   const [editShipment, setEditShipment] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [page, setPage] = useState(0)
-  const PAGE_SIZE = 100
+  const [pageSize, setPageSize] = useState(() => restoreRowsPerPage(slug))
+  const effectivePageSize = Math.max(10, Math.min(300, pageSize))
+
+  // Persist rows-per-page choice
+  useEffect(() => {
+    try {
+      localStorage.setItem(`dashboard_rowsPerPage_${slug}`, pageSize)
+    } catch (e) {
+      console.error('Failed to save rowsPerPage to localStorage:', e)
+    }
+  }, [pageSize, slug])
+
+  // Reset to first page when page size changes
+  useEffect(() => {
+    setPage(0)
+  }, [pageSize])
 
   // Secret clear-all: triple-click title → password modal → re-auth against org owner
   const [showClearAll, setShowClearAll] = useState(false)
@@ -175,8 +204,8 @@ export default function DashboardPage() {
     return result
   }, [dateSearchFiltered, statusFilter])
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
-  const paginatedShipments = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const totalPages = Math.ceil(filtered.length / effectivePageSize)
+  const paginatedShipments = filtered.slice(page * effectivePageSize, (page + 1) * effectivePageSize)
 
   // Counts per status for filter tab badges
   const statusCounts = useMemo(() => {
@@ -527,12 +556,12 @@ export default function DashboardPage() {
               onClick={() => setSelectedIds(new Set(filtered.map(s => s.id)))}
               className="text-blue-600 hover:text-blue-800 underline font-medium"
             >
-              {selectedIds.size <= PAGE_SIZE && filtered.length > PAGE_SIZE
+              {selectedIds.size <= effectivePageSize && filtered.length > effectivePageSize
                 ? `Select all ${filtered.length} matching current filters`
                 : `Select all ${filtered.length} matching`}
             </button>
           )}
-          {filtered.length > 0 && selectedIds.size === filtered.length && selectedIds.size > PAGE_SIZE && (
+          {filtered.length > 0 && selectedIds.size === filtered.length && selectedIds.size > effectivePageSize && (
             <span className="text-blue-600 text-xs">(all matching)</span>
           )}
           <span className="flex-1" />
@@ -582,12 +611,27 @@ export default function DashboardPage() {
 
       {/* Pagination + Count */}
       <div className="mt-3 flex items-center justify-between shrink-0">
-        <p className="text-sm text-slate-500">
-          {filtered.length > PAGE_SIZE
-            ? `Showing ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, filtered.length)} of ${filtered.length}`
-            : `${filtered.length} shipment${filtered.length === 1 ? '' : 's'}`}
-          {statusFilter !== 'all' && ` (${statusFilter.replace('_', ' ')})`}
-        </p>
+        <div className="flex items-center gap-4">
+          <p className="text-sm text-slate-500">
+            {filtered.length > effectivePageSize
+              ? `Showing ${page * effectivePageSize + 1}–${Math.min((page + 1) * effectivePageSize, filtered.length)} of ${filtered.length}`
+              : `${filtered.length} shipment${filtered.length === 1 ? '' : 's'}`}
+            {statusFilter !== 'all' && ` (${statusFilter.replace('_', ' ')})`}
+          </p>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="rows-per-page" className="text-xs text-slate-500">Rows</label>
+            <select
+              id="rows-per-page"
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="px-2 py-1 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+        </div>
         {totalPages > 1 && (
           <div className="flex items-center gap-2">
             <button
