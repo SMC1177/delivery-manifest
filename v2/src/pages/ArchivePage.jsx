@@ -2,9 +2,20 @@ import { useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useOrganization } from '../hooks/useOrganization'
+import { useImports } from '../hooks/useImports'
 import { useShipments } from '../hooks/useShipments'
 import { useArchiveActions } from '../hooks/useArchiveActions'
 import { useToast } from '../components/Toast'
+
+function formatImportTimestamp(ts) {
+  if (!ts) return '—'
+  try {
+    const date = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts)
+    return date.toLocaleString()
+  } catch {
+    return '—'
+  }
+}
 
 export default function ArchivePage() {
   const { slug } = useParams()
@@ -28,6 +39,16 @@ export default function ArchivePage() {
     countDeleteTargets,
     clearError,
   } = useArchiveActions(slug)
+  const {
+    imports,
+    loading: importsLoading,
+    error: importsError,
+    refresh: refreshImports,
+    busy: importsBusy,
+    progress: importsProgress,
+    undoImport,
+    countUndoTargets,
+  } = useImports(slug)
   const addToast = useToast()
 
   const [cutoffDate, setCutoffDate] = useState('')
@@ -39,6 +60,9 @@ export default function ArchivePage() {
   const [deleteCount, setDeleteCount] = useState(null)
   const [deleteConfirmPhrase, setDeleteConfirmPhrase] = useState('')
   const [deletePhase, setDeletePhase] = useState('idle')
+  const [undoImportId, setUndoImportId] = useState(null)
+  const [undoCount, setUndoCount] = useState(null)
+  const [undoPhase, setUndoPhase] = useState('idle')
 
   // ── Admin gate ────────────────────────────────────────────────
   const isAdmin = userData?.role === 'admin'
@@ -144,6 +168,45 @@ export default function ArchivePage() {
     setDeletePhase('idle')
   }, [])
 
+  // ── Undo import handlers ──────────────────────────────────────
+  const handleUndoCount = useCallback(async (importId) => {
+    setUndoImportId(importId)
+    setUndoPhase('counting')
+    try {
+      const count = await countUndoTargets(importId)
+      setUndoCount(count)
+      setUndoPhase('confirming')
+    } catch (err) {
+      addToast(err.message || 'Failed to count records for undo', 'error')
+      setUndoPhase('idle')
+      setUndoImportId(null)
+    }
+  }, [countUndoTargets, addToast])
+
+  const handleUndoConfirm = useCallback(async () => {
+    setUndoPhase('undoing')
+    try {
+      await undoImport({ importId: undoImportId, confirmCount: undoCount })
+      addToast(`Undo complete: ${undoCount} shipment${undoCount !== 1 ? 's' : ''} removed`)
+      setUndoPhase('idle')
+      setUndoImportId(null)
+      setUndoCount(null)
+      refreshImports()
+      refresh()
+    } catch (err) {
+      addToast(err.message || 'Undo failed', 'error')
+      setUndoPhase('idle')
+      setUndoImportId(null)
+      setUndoCount(null)
+    }
+  }, [undoImportId, undoCount, undoImport, addToast, refreshImports, refresh])
+
+  const handleUndoCancel = useCallback(() => {
+    setUndoPhase('idle')
+    setUndoImportId(null)
+    setUndoCount(null)
+  }, [])
+
   // ── Admin gate ────────────────────────────────────────────────
   if (!isAdmin) {
     return (
@@ -162,7 +225,7 @@ export default function ArchivePage() {
   }
 
   // ── Error display ─────────────────────────────────────────────
-  const displayError = archiveError || shipmentsError
+  const displayError = archiveError || shipmentsError || importsError
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
@@ -294,6 +357,109 @@ export default function ArchivePage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Recent imports ──────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <h2 className="text-lg font-semibold text-slate-900 mb-3">
+          Recent imports
+        </h2>
+        <p className="text-sm text-slate-600 mb-4">
+          Import runs shown here can be undone in full — all shipments created
+          by the run will be permanently removed. Only imports performed since
+          this feature was added carry the tracking data needed to appear here.
+          If you need to remove shipments from an older import, use the bulk
+          selection tools on the dashboard instead.
+        </p>
+
+        {importsLoading ? (
+          <p className="text-sm text-slate-500 py-4">Loading imports…</p>
+        ) : imports.length === 0 ? (
+          <p className="text-sm text-slate-500 py-4">
+            No recent imports found. Import runs will appear here after you
+            upload a CSV from the dashboard.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left">
+                  <th className="py-2 pr-4 font-medium text-slate-500">File</th>
+                  <th className="py-2 pr-4 font-medium text-slate-500">Records</th>
+                  <th className="py-2 pr-4 font-medium text-slate-500">Imported</th>
+                  <th className="py-2 pr-4 font-medium text-slate-500">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {imports.map((imp) => {
+                  const isThisUndo = undoImportId === imp.id
+                  return (
+                    <tr key={imp.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="py-2 pr-4 text-slate-900 font-medium">
+                        {imp.filename || '—'}
+                      </td>
+                      <td className="py-2 pr-4 text-slate-700">
+                        {imp.count != null ? imp.count : '—'}
+                      </td>
+                      <td className="py-2 pr-4 text-slate-600 whitespace-nowrap">
+                        {formatImportTimestamp(imp.importedAt)}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {isThisUndo && undoPhase === 'counting' ? (
+                          <span className="text-xs text-slate-500">Counting…</span>
+                        ) : isThisUndo && undoPhase === 'confirming' && undoCount !== null ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-red-700">
+                              {undoCount} record{undoCount !== 1 ? 's' : ''} will be removed.
+                            </span>
+                            <button
+                              onClick={handleUndoConfirm}
+                              disabled={importsBusy}
+                              className="px-2 py-1 text-xs font-medium text-white bg-red-600
+                                         rounded hover:bg-red-700 disabled:opacity-50
+                                         disabled:cursor-not-allowed transition-colors"
+                            >
+                              Confirm undo
+                            </button>
+                            <button
+                              onClick={handleUndoCancel}
+                              disabled={importsBusy}
+                              className="px-2 py-1 text-xs text-slate-500 hover:text-slate-700
+                                         disabled:opacity-50 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : isThisUndo && undoPhase === 'undoing' ? (
+                          <span className="text-xs text-red-600">
+                            Removing…{' '}
+                            {importsProgress.processed != null
+                              ? `${importsProgress.processed} processed`
+                              : ''}
+                            {importsProgress.deleted != null
+                              ? `, ${importsProgress.deleted} deleted`
+                              : ''}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleUndoCount(imp.id)}
+                            disabled={importsBusy || undoPhase !== 'idle'}
+                            className="px-2 py-1 text-xs font-medium text-red-700 bg-red-50
+                                       border border-red-200 rounded
+                                       hover:bg-red-100 disabled:opacity-50
+                                       disabled:cursor-not-allowed transition-colors"
+                          >
+                            Undo
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* ── Archived shipments list ──────────────────────────── */}
