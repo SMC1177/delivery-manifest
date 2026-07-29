@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
-import { getFirestore } from 'firebase-admin/firestore'
+import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 
 const MAX_SLUG_LEN = 128
 const DEFAULT_CHUNK = 500
@@ -85,6 +85,13 @@ export const backfillArchivedFlag = onCall(async (request) => {
     const done = processed < chunkSize
     const lastDoc =
       results.length > 0 ? results[results.length - 1].id : null
+
+    if (done) {
+      await firestore.doc(`organizations/${orgSlug}`).update({
+        archiveBackfillComplete: true,
+        archiveBackfillCompletedAt: FieldValue.serverTimestamp(),
+      })
+    }
 
     return { processed, updated, done, cursor: lastDoc }
   } catch (err) {
