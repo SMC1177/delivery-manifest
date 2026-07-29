@@ -14,6 +14,7 @@ import {
   linkWithCredential,
 } from 'firebase/auth'
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { getFunctions, httpsCallable } from 'firebase/functions'
 import { auth, db } from '../lib/firebase'
 
 const AuthContext = createContext(null)
@@ -220,25 +221,12 @@ export function AuthProvider({ children }) {
     setUserData(memberData)
   }
 
-  async function joinOrganization(slug, role) {
-    const uid = auth.currentUser.uid
-    const profileSnap = await getDoc(doc(db, 'userProfiles', uid))
-    const profile = profileSnap.exists() ? profileSnap.data() : {}
+  async function joinOrganization(slug, code) {
+    await httpsCallable(getFunctions(), 'redeemInviteAndJoin')({ slug, code })
 
-    const memberData = {
-      name: profile.name || auth.currentUser.email,
-      email: auth.currentUser.email,
-      role: role || 'staff',
-      joinedAt: serverTimestamp(),
-      mfaEnrolled: false,
-      welcomeDismissed: false,
-    }
-
-    await setDoc(doc(db, 'organizations', slug, 'members', uid), memberData)
-    await setDoc(doc(db, 'userProfiles', uid), { ...profile, orgSlug: slug })
-
-    setOrgSlug(slug)
-    setUserData(memberData)
+    // Refresh local state from the authoritative source so the UI
+    // reflects membership without a page reload.
+    await loadUserData(auth.currentUser.uid)
   }
 
   async function updateMfaStatus(enrolled) {

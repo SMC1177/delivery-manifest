@@ -42,7 +42,8 @@ service cloud.firestore {
       // roster; admins manage other members.
       match /members/{memberId} {
         allow read: if isMember(orgSlug) || (isSignedIn() && request.auth.uid == memberId);
-        allow create, update: if (isSignedIn() && request.auth.uid == memberId) || isAdmin(orgSlug);
+        allow create: if isAdmin(orgSlug);
+        allow update: if (isSignedIn() && request.auth.uid == memberId) || isAdmin(orgSlug);
         allow delete: if isAdmin(orgSlug) || (isSignedIn() && request.auth.uid == memberId);
       }
 

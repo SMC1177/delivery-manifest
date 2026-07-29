@@ -5,7 +5,6 @@ import { doc, getDoc } from 'firebase/firestore'
 import QRCode from 'qrcode'
 import { auth, db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
-import { findInviteByCode, redeemInvite } from '../hooks/useInvites'
 
 function slugify(name) {
   return name
@@ -248,13 +247,13 @@ export default function SetupPage() {
                           setJoining(true)
                           setJoinError('')
                           try {
-                            const invite = await findInviteByCode(inviteSlug, inviteCode)
-                            if (!invite) { setJoinError('Invalid invite code for this organization'); setJoining(false); return }
-                            await redeemInvite(inviteSlug, invite.id, user.uid)
-                            await joinOrganization(inviteSlug, invite.role || 'staff')
+                            await joinOrganization(inviteSlug, inviteCode)
                             navigate(`/${inviteSlug}/welcome`)
                           } catch (err) {
-                            setJoinError(err.message || 'Failed to join organization')
+                            const msg = err.code === 'permission-denied'
+                              ? 'This invite code is invalid, expired, or has already been used.'
+                              : (err.message || 'Failed to join organization')
+                            setJoinError(msg)
                           }
                           setJoining(false)
                         }}

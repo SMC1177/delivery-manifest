@@ -896,6 +896,9 @@ export {
 // --- Invite-link preauth validation (unauthenticated onCall) ---
 export { validateInvite } from './validate-invite.js'
 
+// --- Invite redemption (authenticated onCall — closes self-join hole) ---
+export { redeemInviteAndJoin } from './join-with-invite.js'
+
 // --- Backfill archived flag for shipment documents (admin-only onCall) ---
 export { backfillArchivedFlag } from './backfill-archived.js'
 

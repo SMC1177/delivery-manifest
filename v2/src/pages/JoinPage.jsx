@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useParams, useSearchParams, Link, useNavigate, Navigate } from 'react-router-dom'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { useAuth } from '../contexts/AuthContext'
-import { redeemInvite } from '../hooks/useInvites'
 import { validatePassword, getPasswordStrength } from '../lib/password'
 
 export default function JoinPage() {
@@ -74,11 +73,13 @@ export default function JoinPage() {
     setSubmitting(true)
     setFormError('')
     try {
-      await redeemInvite(slug, invite.id, user.uid)
-      await joinOrganization(slug, invite.role)
+      await joinOrganization(slug, inviteCode)
       navigate(`/${slug}/dashboard`)
     } catch (err) {
-      setFormError(err.message || 'Failed to join organization')
+      const msg = err.message === 'permission-denied' || err.code === 'permission-denied'
+        ? 'This invite is no longer valid.'
+        : err.message || 'Failed to join organization'
+      setFormError(msg)
     } finally {
       setSubmitting(false)
     }
@@ -97,16 +98,17 @@ export default function JoinPage() {
     setSubmitting(true)
     try {
       await register(email, password, name)
-      // After registration, user needs to verify email first
-      // Then come back and join
-      await redeemInvite(slug, invite.id, null) // mark invite as used
+      await joinOrganization(slug, inviteCode)
       navigate('/verify-email')
     } catch (err) {
-      setFormError(
-        err.code === 'auth/email-already-in-use'
-          ? 'An account with this email already exists. Please sign in instead.'
-          : err.message
-      )
+      if (err.code === 'auth/email-already-in-use') {
+        setFormError('An account with this email already exists. Please sign in instead.')
+      } else {
+        const msg = err.message === 'permission-denied' || err.code === 'permission-denied'
+          ? 'This invite is no longer valid.'
+          : err.message || 'Failed to join organization'
+        setFormError(msg)
+      }
     } finally {
       setSubmitting(false)
     }
