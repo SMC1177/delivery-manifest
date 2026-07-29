@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { collection, addDoc, serverTimestamp, getDocs, writeBatch, doc, getDoc } from 'firebase/firestore'
 import { getFunctions, httpsCallable } from 'firebase/functions'
@@ -9,6 +9,7 @@ import { useShipments, getCentralTimeDateString, formatCentralTime } from '../ho
 import { useAuditLog } from '../hooks/useAuditLog'
 import { useToast } from '../components/Toast'
 import { useOrganization } from '../hooks/useOrganization'
+import { useArchiveActions } from '../hooks/useArchiveActions'
 import ShipmentTable from '../components/ShipmentTable'
 import ShipmentModal from '../components/ShipmentModal'
 import DeleteModal from '../components/DeleteModal'
@@ -36,6 +37,20 @@ export default function DashboardPage() {
     shipments, loading, error, refresh,
     addShipment, updateShipment, removeShipment,
   } = useShipments(slug, { archived: false, backfillComplete })
+  const isAdmin = userData?.role === 'admin'
+  const {
+    archiveShipments,
+    error: archiveHookError,
+  } = useArchiveActions(slug)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const [archiveProcessed, setArchiveProcessed] = useState(0)
+  const [archiveTotal, setArchiveTotal] = useState(0)
+  const [archiveErr, setArchiveErr] = useState(null)
+  const archiveHookErrRef = useRef(null)
+  useEffect(() => {
+    archiveHookErrRef.current = archiveHookError
+  }, [archiveHookError])
   const { logAction } = useAuditLog(slug)
   const addToast = useToast()
 
@@ -309,6 +324,39 @@ export default function DashboardPage() {
     setRefreshing(false)
   }
 
+  async function handleBulkArchive() {
+    const ids = [...selectedIds]
+    setArchiveBusy(true)
+    setArchiveProcessed(0)
+    setArchiveTotal(ids.length)
+    setArchiveErr(null)
+
+    const CHUNK = 500
+    try {
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK)
+        await archiveShipments({ mode: 'ids', ids: chunk })
+        if (archiveHookErrRef.current) {
+          setArchiveErr(archiveHookErrRef.current)
+          addToast('Archive failed: ' + archiveHookErrRef.current, 'error')
+          return
+        }
+        const processed = Math.min(i + CHUNK, ids.length)
+        setArchiveProcessed(processed)
+      }
+      setSelectedIds(new Set())
+      await refresh()
+      addToast(`Archived ${ids.length} shipment${ids.length === 1 ? '' : 's'}`)
+      await logAction('shipment.bulk_archive', null, { count: ids.length })
+    } catch (err) {
+      const msg = err.message || 'Archive failed'
+      setArchiveErr(msg)
+      addToast('Archive failed: ' + msg, 'error')
+    } finally {
+      setArchiveBusy(false)
+    }
+  }
+
   function exportCsv() {
     if (!filtered.length) return
     const headers = [
@@ -468,6 +516,51 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* Bulk action bar — admins only */}
+      {isAdmin && selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm shrink-0">
+          <span className="font-medium text-blue-800">
+            {selectedIds.size} selected
+          </span>
+          {filtered.length > 0 && selectedIds.size < filtered.length && (
+            <button
+              onClick={() => setSelectedIds(new Set(filtered.map(s => s.id)))}
+              className="text-blue-600 hover:text-blue-800 underline font-medium"
+            >
+              {selectedIds.size <= PAGE_SIZE && filtered.length > PAGE_SIZE
+                ? `Select all ${filtered.length} matching current filters`
+                : `Select all ${filtered.length} matching`}
+            </button>
+          )}
+          {filtered.length > 0 && selectedIds.size === filtered.length && selectedIds.size > PAGE_SIZE && (
+            <span className="text-blue-600 text-xs">(all matching)</span>
+          )}
+          <span className="flex-1" />
+          {archiveErr && (
+            <span className="text-red-600 text-xs shrink-0">{archiveErr}</span>
+          )}
+          {archiveBusy ? (
+            <span className="text-blue-700 font-medium text-xs shrink-0">
+              Archiving... {archiveProcessed} of {archiveTotal}
+            </span>
+          ) : (
+            <button
+              onClick={() => {
+                if (window.confirm(
+                  `Archive ${selectedIds.size} shipment${selectedIds.size === 1 ? '' : 's'}?\n\n` +
+                  `This hides them from the dashboard. They can be restored from the Archive page.`
+                )) {
+                  handleBulkArchive()
+                }
+              }}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shrink-0"
+            >
+              Archive {selectedIds.size}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-xl border border-slate-200 flex-1 min-h-0 overflow-auto">
         {loading ? (
@@ -481,6 +574,8 @@ export default function DashboardPage() {
             onDelete={isViewer ? undefined : setDeleteTarget}
             onStatusChange={isViewer ? undefined : handleStatusChange}
             readOnly={isViewer}
+            selectedIds={isAdmin ? selectedIds : undefined}
+            onSelectionChange={isAdmin ? setSelectedIds : undefined}
           />
         )}
       </div>

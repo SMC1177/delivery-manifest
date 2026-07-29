@@ -23,7 +23,9 @@ export default function ArchivePage() {
     archiveShipments,
     restoreShipments,
     backfillArchivedFlag,
+    deleteArchivedShipments,
     countArchiveTargets,
+    countDeleteTargets,
     clearError,
   } = useArchiveActions(slug)
   const addToast = useToast()
@@ -32,6 +34,11 @@ export default function ArchivePage() {
   const [eligibleCount, setEligibleCount] = useState(null)
   const [counting, setCounting] = useState(false)
   const [restoringId, setRestoringId] = useState(null)
+
+  // ── Permanent deletion state ──────────────────────────────────
+  const [deleteCount, setDeleteCount] = useState(null)
+  const [deleteConfirmPhrase, setDeleteConfirmPhrase] = useState('')
+  const [deletePhase, setDeletePhase] = useState('idle')
 
   // ── Admin gate ────────────────────────────────────────────────
   const isAdmin = userData?.role === 'admin'
@@ -98,6 +105,44 @@ export default function ArchivePage() {
     },
     [restoreShipments, addToast, refresh],
   )
+
+  // ── Permanent deletion handlers ───────────────────────────────
+  const handleDeleteCount = useCallback(async () => {
+    setDeletePhase('counting')
+    try {
+      const count = await countDeleteTargets({})
+      setDeleteCount(count)
+      setDeletePhase('confirming')
+    } catch (err) {
+      addToast(err.message || 'Failed to count archived records', 'error')
+      setDeletePhase('idle')
+    }
+  }, [countDeleteTargets, addToast])
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (deleteConfirmPhrase !== 'DELETE') return
+    setDeletePhase('deleting')
+    try {
+      await deleteArchivedShipments({ confirmCount: deleteCount })
+      addToast(`Permanently deleted ${deleteCount} archived shipment${deleteCount !== 1 ? 's' : ''}`)
+      setDeleteCount(null)
+      setDeleteConfirmPhrase('')
+      setDeletePhase('idle')
+      refresh()
+    } catch {
+      // Count mismatch or other error — reset the flow so the admin must re-count and re-confirm.
+      addToast('Deletion failed. The archive may have changed — please re-count and re-confirm.', 'error')
+      setDeleteCount(null)
+      setDeleteConfirmPhrase('')
+      setDeletePhase('idle')
+    }
+  }, [deleteConfirmPhrase, deleteCount, deleteArchivedShipments, addToast, refresh])
+
+  const handleDeleteCancel = useCallback(() => {
+    setDeleteCount(null)
+    setDeleteConfirmPhrase('')
+    setDeletePhase('idle')
+  }, [])
 
   // ── Admin gate ────────────────────────────────────────────────
   if (!isAdmin) {
@@ -314,6 +359,112 @@ export default function ArchivePage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* ── Permanent deletion (danger zone) ─────────────────── */}
+        {archivedShipments.length > 0 && !shipmentsLoading && (
+          <div className="bg-red-50 border-2 border-red-400 rounded-xl p-6 mt-10">
+            <h2 className="text-lg font-semibold text-red-900 mb-2 flex items-center gap-2">
+              <span className="text-lg">⚠️</span> Danger Zone — Permanent Deletion
+            </h2>
+            <p className="text-sm text-red-800 mb-5">
+              Permanently delete all archived shipments. This action <strong>cannot be undone</strong>.
+              Deleted records are irretrievable. Shipments must be archived before they can be deleted.
+            </p>
+
+            {deletePhase === 'idle' && (
+              <button
+                type="button"
+                onClick={handleDeleteCount}
+                disabled={busy}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium
+                           hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed
+                           transition-colors"
+              >
+                Count archived records for deletion
+              </button>
+            )}
+
+            {deletePhase === 'counting' && (
+              <p className="text-sm text-red-700 animate-pulse">Counting archived records…</p>
+            )}
+
+            {(deletePhase === 'confirming' || deletePhase === 'deleting') && deleteCount !== null && (
+              <div className="space-y-4">
+                {deleteCount === 0 ? (
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-red-700">
+                      No archived records to delete.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleDeleteCancel}
+                      className="px-3 py-1.5 text-sm text-red-500 hover:text-red-700
+                                 border border-red-200 rounded-lg transition-colors"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-sm text-red-800 font-medium mb-3">
+                        {deleteCount} archived shipment{deleteCount !== 1 ? 's' : ''} will be
+                        permanently deleted. <strong>This cannot be undone.</strong>
+                      </p>
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="delete-confirm-input"
+                        className="block text-sm font-medium text-red-800 mb-1"
+                      >
+                        Type <code className="bg-red-100 px-1.5 py-0.5 rounded text-red-900">DELETE</code> to confirm:
+                      </label>
+                      <input
+                        id="delete-confirm-input"
+                        type="text"
+                        value={deleteConfirmPhrase}
+                        onChange={(e) => setDeleteConfirmPhrase(e.target.value)}
+                        placeholder="Type DELETE here"
+                        className="border border-red-300 rounded-lg px-3 py-2 text-sm w-64
+                                   focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        disabled={deletePhase === 'deleting'}
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleDeleteConfirm}
+                        disabled={deleteConfirmPhrase !== 'DELETE' || deletePhase === 'deleting'}
+                        className="px-4 py-2 bg-red-700 text-white rounded-lg text-sm font-medium
+                                   hover:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed
+                                   transition-colors"
+                      >
+                        {deletePhase === 'deleting'
+                          ? 'Deleting…'
+                          : `Permanently delete ${deleteCount} record${deleteCount !== 1 ? 's' : ''}`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteCancel}
+                        disabled={deletePhase === 'deleting'}
+                        className="px-3 py-1.5 text-sm text-red-500 hover:text-red-700
+                                   disabled:opacity-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
+                {deletePhase === 'deleting' && (
+                  <p className="text-sm text-red-700">
+                    {progress.processed != null ? `${progress.processed} records processed` : 'Working…'}
+                    {progress.changed != null ? `, ${progress.changed} deleted` : ''}…
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -8,11 +8,11 @@ const MAX_ITERATIONS = 2000
 const CHUNK_SIZE = 500
 
 /**
- * Hook that drives the three archive-related callables to completion
+ * Hook that drives the four archive-related callables to completion
  * across potentially many 500-doc chunks.  Exposes running progress,
  * a busy flag, terminal errors, and a dry-run count helper.
  *
- * All three actions are idempotent server-side; this hook just loops
+ * All four actions are idempotent server-side; this hook just loops
  * until `done` is true, with guards against infinite loops and
  * unmounted-component state updates.
  */
@@ -42,6 +42,18 @@ export function useArchiveActions(orgSlug) {
       if (mode === 'ids') payload.ids = ids
       const result = await callable(payload)
       return result.data.changed
+    },
+    [orgSlug],
+  )
+
+  // ── dry-run count for deletion (no loop, no write) ─────────────
+  const countDeleteTargets = useCallback(
+    async ({ ids }) => {
+      const callable = httpsCallable(getFunctions(), 'deleteArchivedShipments')
+      const payload = { slug: orgSlug, dryRun: true }
+      if (ids) payload.ids = ids
+      const result = await callable(payload)
+      return result.data.deleted
     },
     [orgSlug],
   )
@@ -217,6 +229,63 @@ export function useArchiveActions(orgSlug) {
     [orgSlug],
   )
 
+  // ── delete (looping) ───────────────────────────────────────────
+  const deleteArchivedShipments = useCallback(
+    async ({ ids, confirmCount }) => {
+      setBusy(true)
+      setProgress({ processed: 0, changed: 0 })
+      setError(null)
+
+      let cursor = null
+      let totalProcessed = 0
+      let totalDeleted = 0
+      let iterations = 0
+
+      try {
+        while (true) {
+          iterations++
+          if (iterations > MAX_ITERATIONS) {
+            throw new Error(
+              `Delete exceeded ${MAX_ITERATIONS} iterations — aborting to prevent infinite loop`,
+            )
+          }
+
+          const callable = httpsCallable(getFunctions(), 'deleteArchivedShipments')
+          const payload = { slug: orgSlug, cursor, limit: CHUNK_SIZE, confirmCount }
+          if (ids) payload.ids = ids
+
+          const result = await callable(payload)
+          const { processed, deleted, done, cursor: nextCursor } = result.data
+
+          totalProcessed += processed
+          totalDeleted += deleted
+
+          if (!mountedRef.current) return
+
+          setProgress({ processed: totalProcessed, changed: totalDeleted })
+
+          if (done) break
+
+          if (!nextCursor || nextCursor === cursor) {
+            throw new Error(
+              'Delete cursor did not advance — aborting to prevent infinite loop',
+            )
+          }
+
+          cursor = nextCursor
+        }
+      } catch (err) {
+        if (!mountedRef.current) return
+        setError(err.message || 'Delete failed')
+      } finally {
+        if (mountedRef.current) {
+          setBusy(false)
+        }
+      }
+    },
+    [orgSlug],
+  )
+
   return {
     busy,
     progress,
@@ -224,7 +293,9 @@ export function useArchiveActions(orgSlug) {
     archiveShipments,
     restoreShipments,
     backfillArchivedFlag,
+    deleteArchivedShipments,
     countArchiveTargets,
+    countDeleteTargets,
     clearError,
   }
 }

@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react'
+import { useState, Fragment, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { useOrgSettings } from '../hooks/useOrgSettings'
 import StatusBadge from './StatusBadge'
@@ -7,13 +7,32 @@ import OptInDot from './OptInDot'
 import SendTextModal from './SendTextModal'
 import { useTextMessagingSettings } from '../hooks/useTextMessagingSettings'
 
-export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusChange, readOnly }) {
+export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusChange, readOnly, selectedIds, onSelectionChange }) {
   const { slug } = useParams()
   const { isFieldEnabled } = useOrgSettings(slug)
   const [expandedGroups, setExpandedGroups] = useState(new Set())
   const [smsModalShipment, setSmsModalShipment] = useState(null)
   const { data: smsSettings } = useTextMessagingSettings(slug)
   const smsEnabled = smsSettings?.enabled === true
+
+  const selectionEnabled = selectedIds !== undefined && onSelectionChange !== undefined
+
+  const isSelected = (id) => {
+    if (!selectionEnabled) return false
+    if (selectedIds instanceof Set) return selectedIds.has(id)
+    return Array.isArray(selectedIds) ? selectedIds.includes(id) : false
+  }
+
+  const allVisibleSelected = selectionEnabled && shipments.length > 0 && shipments.every(s => isSelected(s.id))
+  const someVisibleSelected = selectionEnabled && shipments.some(s => isSelected(s.id))
+
+  const headerCheckboxRef = useRef(null)
+
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = someVisibleSelected && !allVisibleSelected
+    }
+  }, [someVisibleSelected, allVisibleSelected])
 
   const toggleGroup = (trackingNumber) => {
     setExpandedGroups(prev => {
@@ -80,6 +99,30 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
       className={`${isChild ? 'bg-slate-50' : 'hover:bg-slate-50'} transition-colors ${groupHasChildren && !isChild ? 'cursor-pointer' : ''}`}
       onClick={groupHasChildren && !isChild ? () => toggleGroup(trackingKey) : undefined}
     >
+      {selectionEnabled && (
+        <td className="px-2 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            className="rounded border-slate-300"
+            checked={isSelected(s.id)}
+            onChange={() => {
+              if (selectedIds instanceof Set) {
+                const next = new Set(selectedIds)
+                if (next.has(s.id)) next.delete(s.id)
+                else next.add(s.id)
+                onSelectionChange(next)
+              } else {
+                const arr = Array.isArray(selectedIds) ? selectedIds : []
+                if (arr.includes(s.id)) {
+                  onSelectionChange(arr.filter(id => id !== s.id))
+                } else {
+                  onSelectionChange([...arr, s.id])
+                }
+              }
+            }}
+          />
+        </td>
+      )}
       <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{s.date || '\u2014'}</td>
       <td className={`px-4 py-3 font-medium text-slate-900 ${isChild ? 'pl-8' : ''}`}>
         <span className="inline-flex items-center gap-1.5">
@@ -263,6 +306,25 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
         <table className="min-w-full text-sm text-left">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500 uppercase text-xs tracking-wider sticky top-0 bg-white z-10">
+              {selectionEnabled && (
+                <th className="px-2 py-3 font-medium w-10">
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300"
+                    checked={allVisibleSelected}
+                    ref={headerCheckboxRef}
+                    onChange={() => {
+                      if (allVisibleSelected) {
+                        onSelectionChange(selectedIds instanceof Set ? new Set() : [])
+                      } else {
+                        const ids = shipments.map(s => s.id)
+                        onSelectionChange(selectedIds instanceof Set ? new Set(ids) : ids)
+                      }
+                    }}
+                    title={allVisibleSelected ? 'Deselect all shipments on this page' : 'Select all shipments on this page'}
+                  />
+                </th>
+              )}
               <th className="px-4 py-3 font-medium">Date</th>
               <th className="px-4 py-3 font-medium">Patient Name</th>
               {isFieldEnabled('address') && <th className="px-4 py-3 font-medium">Address</th>}

@@ -902,8 +902,9 @@ export { redeemInviteAndJoin } from './join-with-invite.js'
 // --- Backfill archived flag for shipment documents (admin-only onCall) ---
 export { backfillArchivedFlag } from './backfill-archived.js'
 
-// --- Archive / restore shipment callables (admin-only onCall) ---
+// --- Archive / restore / delete shipment callables (admin-only onCall) ---
 export {
   archiveShipments,
   restoreShipments,
 } from './archive-shipments.js'
+export { deleteArchivedShipments } from './delete-archived.js'
