@@ -7,6 +7,32 @@
         { "fieldPath": "archived", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "shipments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "archived", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "shipments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "archived", "order": "ASCENDING" },
+        { "fieldPath": "patientNameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "shipments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "archived", "order": "ASCENDING" },
+        { "fieldPath": "rxNumbers", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

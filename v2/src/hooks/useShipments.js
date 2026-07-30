@@ -189,6 +189,7 @@ export function useShipments(orgSlug, options = {}) {
       carrier: data.carrier || 'ups',
       status: data.status || 'pending',
       archived: false,
+      patientNameLower: (typeof data.patientName === 'string' ? data.patientName : '').trim().toLowerCase(),
       deliveredAt: null,
       shippedAt: null,
       createdAt: serverTimestamp(),
@@ -209,6 +210,13 @@ export function useShipments(orgSlug, options = {}) {
     }
     if (data.status === 'shipped' && !data.shippedAt) {
       updates.shippedAt = serverTimestamp()
+    }
+    // patientNameLower tracks patientName so renamed/corrected patients stay
+    // findable in prefix search. Unlike `archived` — stamped once at creation
+    // and never touched on update — this field MUST stay in sync on every
+    // update that carries a patientName property.
+    if ('patientName' in data) {
+      updates.patientNameLower = (typeof data.patientName === 'string' ? data.patientName : '').trim().toLowerCase()
     }
     await updateDoc(ref, updates)
     await fetchShipments()

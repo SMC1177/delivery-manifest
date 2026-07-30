@@ -909,3 +909,7 @@ export {
 } from './archive-shipments.js'
 export { deleteArchivedShipments } from './delete-archived.js'
 export { undoImport } from './undo-import.js'
+
+
+// --- Backfill patientNameLower for server-side prefix search (admin-only onCall) ---
+export { backfillSearchFields } from './backfill-search-fields.js'

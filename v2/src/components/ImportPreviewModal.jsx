@@ -30,6 +30,7 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
           const ref = doc(colRef)
           batch.set(ref, {
             patientName: s.patientName || '',
+            patientNameLower: (s.patientName || '').trim().toLowerCase(),
             phone: s.phone || '',
             dob: s.dateOfBirth || '',
             address: s.address || '',
@@ -65,6 +66,7 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
           const ref = doc(db, 'organizations', orgSlug, 'shipments', s.shipmentId)
           const updateData = {
             patientName: s.patientName || '',
+            patientNameLower: (s.patientName || '').trim().toLowerCase(),
             phone: s.phone || '',
             dob: s.dateOfBirth || '',
             address: s.address || '',
