@@ -34,6 +34,7 @@ export default function ArchivePage() {
     archiveShipments,
     restoreShipments,
     backfillArchivedFlag,
+    backfillSearchFields,
     deleteArchivedShipments,
     countArchiveTargets,
     countDeleteTargets,
@@ -77,6 +78,16 @@ export default function ArchivePage() {
       addToast(err.message || 'Backfill failed', 'error')
     }
   }, [backfillArchivedFlag, addToast, refresh])
+
+  const handleSearchBackfill = useCallback(async () => {
+    try {
+      await backfillSearchFields()
+      addToast('Search preparation complete. Faster list loading is now active.')
+      refresh()
+    } catch (err) {
+      addToast(err.message || 'Search preparation failed', 'error')
+    }
+  }, [backfillSearchFields, addToast, refresh])
 
   // ── Cutoff handlers ───────────────────────────────────────────
   const handleCountTargets = useCallback(async () => {
@@ -256,6 +267,42 @@ export default function ArchivePage() {
                          transition-colors"
             >
               {busy ? 'Running…' : 'Run Indexing Pass'}
+            </button>
+            {busy && progress !== undefined && (
+              <span className="text-sm text-amber-700">
+                {progress} records processed
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Search preparation banner ────────────────────────── */}
+      {org?.searchBackfillComplete !== true && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex-1">
+              <h2 className="text-lg font-semibold text-amber-900 mb-1">
+                Faster delivery list loading — one-time preparation needed
+              </h2>
+              <p className="text-amber-800 text-sm leading-relaxed">
+                Before faster loading for large delivery lists can be turned on,
+                existing delivery records need a one-time preparation pass. This
+                is safe to run and can be re-run if interrupted. Once complete,
+                the delivery list and archive views will load significantly
+                faster, especially for organizations with many records.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              onClick={handleSearchBackfill}
+              disabled={busy}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium
+                         hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed
+                         transition-colors"
+            >
+              {busy ? 'Running…' : 'Run Preparation Pass'}
             </button>
             {busy && progress !== undefined && (
               <span className="text-sm text-amber-700">

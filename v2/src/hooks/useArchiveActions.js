@@ -229,6 +229,62 @@ export function useArchiveActions(orgSlug) {
     [orgSlug],
   )
 
+  // ── search backfill (looping) ──────────────────────────────────
+  const backfillSearchFields = useCallback(
+    async () => {
+      setBusy(true)
+      setProgress({ processed: 0, changed: 0 })
+      setError(null)
+
+      let cursor = null
+      let totalProcessed = 0
+      let totalChanged = 0
+      let iterations = 0
+
+      try {
+        while (true) {
+          iterations++
+          if (iterations > MAX_ITERATIONS) {
+            throw new Error(
+              `Search backfill exceeded ${MAX_ITERATIONS} iterations — aborting to prevent infinite loop`,
+            )
+          }
+
+          const callable = httpsCallable(getFunctions(), 'backfillSearchFields')
+          const payload = { slug: orgSlug, cursor, limit: CHUNK_SIZE }
+
+          const result = await callable(payload)
+          const { processed, updated, done, cursor: nextCursor } = result.data
+
+          totalProcessed += processed
+          totalChanged += updated
+
+          if (!mountedRef.current) return
+
+          setProgress({ processed: totalProcessed, changed: totalChanged })
+
+          if (done) break
+
+          if (!nextCursor || nextCursor === cursor) {
+            throw new Error(
+              'Search backfill cursor did not advance — aborting to prevent infinite loop',
+            )
+          }
+
+          cursor = nextCursor
+        }
+      } catch (err) {
+        if (!mountedRef.current) return
+        setError(err.message || 'Search backfill failed')
+      } finally {
+        if (mountedRef.current) {
+          setBusy(false)
+        }
+      }
+    },
+    [orgSlug],
+  )
+
   // ── delete (looping) ───────────────────────────────────────────
   const deleteArchivedShipments = useCallback(
     async ({ ids, confirmCount }) => {
@@ -293,6 +349,7 @@ export function useArchiveActions(orgSlug) {
     archiveShipments,
     restoreShipments,
     backfillArchivedFlag,
+    backfillSearchFields,
     deleteArchivedShipments,
     countArchiveTargets,
     countDeleteTargets,
