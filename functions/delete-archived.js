@@ -14,19 +14,25 @@ const MAX_IDS = 500
  *
  * CRITICAL GUARD — archived-only: only deletes documents where
  * `archived === true` (strict equality). A document missing the field
- * is NEVER deleted, even when its id appears in `ids`. This enforces a
- * two-step journey: archive first, then delete.
+ * is NEVER deleted, even when its id appears in `ids` or it matches a
+ * filter. This enforces a two-step journey: archive first, then delete.
  *
- * Two modes:
- * - With `ids`: deletes specific archived shipments by document id array
+ * Three modes (mutually exclusive):
+ * - `ids`: deletes specific archived shipments by document id array
  *   (max 500, rejected if longer).
- * - Without `ids`: deletes ALL archived shipments in the org, chunked and
- *   cursor-resumable.
+ * - `filter`: deletes archived shipments matching a criteria object with
+ *   any combination of status, dateFrom, dateTo (inclusive), and search
+ *   (caller-lowercased patient-name prefix matched via range query against
+ *   patientNameLower). At least one criterion is required; an empty filter
+ *   is rejected. Criteria combine as AND.
+ * - No ids / no filter: deletes ALL archived shipments in the org, chunked
+ *   and cursor-resumable.
  *
  * confirmCount: on the first chunk only (no cursor), counts what the
  * server is about to delete and compares to the caller-supplied value.
  * On mismatch, deletes NOTHING and throws so the client can re-confirm.
- * Subsequent cursor-resume chunks skip the check.
+ * Subsequent cursor-resume chunks skip the check. This applies to ALL
+ * modes, including filter — the server counts the matching set itself.
  *
  * dryRun: counts deletable docs but constructs NO batch — structurally
  * impossible to delete anything.
@@ -41,7 +47,7 @@ export const deleteArchivedShipments = onCall(async (request) => {
   }
 
   // ── input validation ────────────────────────────────────────────
-  const { slug, ids, cursor, limit, confirmCount, dryRun } =
+  const { slug, ids, cursor, limit, confirmCount, dryRun, filter } =
     request.data || {}
 
   if (typeof slug !== 'string' || slug.trim() === '') {
@@ -69,6 +75,41 @@ export const deleteArchivedShipments = onCall(async (request) => {
         'invalid-argument',
         `ids array must not exceed ${MAX_IDS} entries (got ${ids.length})`,
       )
+    }
+  }
+
+  // ── filter validation ──────────────────────────────────────────
+  let hasFilter = false
+  let hasStatus = false
+  let hasDateFrom = false
+  let hasDateTo = false
+  let hasSearch = false
+
+  if (filter !== undefined) {
+    if (!filter || typeof filter !== 'object' || Array.isArray(filter)) {
+      throw new HttpsError('invalid-argument', 'filter must be an object')
+    }
+    hasFilter = true
+    hasStatus =
+      typeof filter.status === 'string' && filter.status.trim() !== ''
+    hasDateFrom =
+      typeof filter.dateFrom === 'string' && filter.dateFrom.trim() !== ''
+    hasDateTo =
+      typeof filter.dateTo === 'string' && filter.dateTo.trim() !== ''
+    hasSearch =
+      typeof filter.search === 'string' && filter.search.trim() !== ''
+
+    if (!hasStatus && !hasDateFrom && !hasDateTo && !hasSearch) {
+      throw new HttpsError(
+        'invalid-argument',
+        'at least one criterion (status, dateFrom, dateTo, search) is required for filter mode',
+      )
+    }
+    if (hasDateFrom && isNaN(Date.parse(filter.dateFrom.trim()))) {
+      throw new HttpsError('invalid-argument', 'dateFrom must be a valid date string')
+    }
+    if (hasDateTo && isNaN(Date.parse(filter.dateTo.trim()))) {
+      throw new HttpsError('invalid-argument', 'dateTo must be a valid date string')
     }
   }
 
@@ -155,6 +196,90 @@ export const deleteArchivedShipments = onCall(async (request) => {
 
       lastCursor =
         batchIds.length > 0 ? batchIds[batchIds.length - 1] : null
+    } else if (hasFilter) {
+      // ── filter mode ─────────────────────────────────────────────
+
+      // Build criteria (trimmed copies)
+      const criteria = {}
+      if (hasStatus) criteria.status = filter.status.trim()
+      if (hasDateFrom) criteria.dateFrom = filter.dateFrom.trim()
+      if (hasDateTo) criteria.dateTo = filter.dateTo.trim()
+      if (hasSearch) criteria.search = filter.search.trim()
+
+      // confirmCount: on first chunk only, count matching archived docs
+      if (!cursor && confirmCount !== undefined && confirmCount !== null) {
+        let countQuery = shipmentsRef.where('archived', '==', true)
+        if (hasStatus) {
+          countQuery = countQuery.where('status', '==', criteria.status)
+        }
+        if (hasDateFrom) {
+          countQuery = countQuery.where('date', '>=', criteria.dateFrom)
+        }
+        if (hasDateTo) {
+          countQuery = countQuery.where('date', '<=', criteria.dateTo)
+        }
+        if (hasSearch) {
+          countQuery = countQuery
+            .where('patientNameLower', '>=', criteria.search)
+            .where('patientNameLower', '<=', criteria.search + '\uf8ff')
+        }
+
+        const countSnap = await countQuery.count().get()
+        const totalArchived = countSnap.data().count
+        if (totalArchived !== confirmCount) {
+          throw new HttpsError(
+            'aborted',
+            `Count mismatch: expected ${confirmCount} to delete, found ${totalArchived} archived. Re-confirm to proceed.`,
+          )
+        }
+      }
+
+      // Build query — mirrors archive-shipments filter criteria shape
+      let filterQuery = shipmentsRef.where('archived', '==', true)
+      const orderFields = []
+
+      if (hasStatus) {
+        filterQuery = filterQuery.where('status', '==', criteria.status)
+        orderFields.push('status')
+      }
+
+      if (hasDateFrom) {
+        filterQuery = filterQuery.where('date', '>=', criteria.dateFrom)
+        if (!orderFields.includes('date')) orderFields.push('date')
+      }
+      if (hasDateTo) {
+        filterQuery = filterQuery.where('date', '<=', criteria.dateTo)
+        if (!orderFields.includes('date')) orderFields.push('date')
+      }
+
+      if (hasSearch) {
+        filterQuery = filterQuery
+          .where('patientNameLower', '>=', criteria.search)
+          .where('patientNameLower', '<=', criteria.search + '\uf8ff')
+        orderFields.push('patientNameLower')
+      }
+
+      for (const field of orderFields) {
+        filterQuery = filterQuery.orderBy(field)
+      }
+      filterQuery = filterQuery.orderBy('__name__').limit(chunkSize)
+
+      if (cursor) {
+        const cursorDocSnap = await firestore
+          .doc(`organizations/${orgSlug}/shipments/${cursor}`)
+          .get()
+        if (cursorDocSnap.exists) {
+          filterQuery = filterQuery.startAfter(cursorDocSnap)
+        }
+      }
+
+      const snapshot = await filterQuery.get()
+      docsToProcess = snapshot.docs
+      done = docsToProcess.length < chunkSize
+      lastCursor =
+        docsToProcess.length > 0
+          ? docsToProcess[docsToProcess.length - 1].id
+          : null
     } else {
       // ── all-archived mode (no ids) ──────────────────────────────
 
@@ -234,6 +359,9 @@ export const deleteArchivedShipments = onCall(async (request) => {
       if (hasIds) {
         auditEntry.mode = 'ids'
         auditEntry.idsCount = ids.length
+      } else if (hasFilter) {
+        auditEntry.mode = 'filter'
+        auditEntry.criteria = filter
       } else {
         auditEntry.mode = 'all'
       }

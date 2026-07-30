@@ -9,12 +9,15 @@ const MAX_IDS = 500
 /**
  * Archives shipments in an organization.
  *
- * Two modes:
+ * Three modes:
  * - 'cutoff': archives all shipments whose date is strictly before cutoffDate —
  *   uses `where('date', '<', cutoffDate)` so records dated exactly on the cutoff
  *   are NOT included. This is the safe default: the admin picks a boundary like
  *   "2024-01-01" intending everything OLDER than that, not including it.
  * - 'ids': archives specific shipments by document ID array (max 500).
+ * - 'filter': archives shipments matching a criteria object with any combination
+ *   of status, dateFrom, dateTo, and search (patient name prefix). At least one
+ *   criterion is required. Criteria combine as AND.
  *
  * Supports dryRun for counting without writing — structurally impossible to
  * mutate anything when dryRun is true (batch is never created).
@@ -29,7 +32,7 @@ export const archiveShipments = onCall(async (request) => {
 
   // ── input validation ────────────────────────────────────────────
   const {
-    slug, mode, cutoffDate, ids, cursor, limit, dryRun,
+    slug, mode, cutoffDate, ids, criteria, cursor, limit, dryRun,
   } = request.data || {}
 
   if (typeof slug !== 'string' || slug.trim() === '') {
@@ -43,8 +46,8 @@ export const archiveShipments = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Invalid slug')
   }
 
-  if (mode !== 'cutoff' && mode !== 'ids') {
-    throw new HttpsError('invalid-argument', 'mode must be "cutoff" or "ids"')
+  if (mode !== 'cutoff' && mode !== 'ids' && mode !== 'filter') {
+    throw new HttpsError('invalid-argument', 'mode must be "cutoff", "ids", or "filter"')
   }
 
   if (mode === 'cutoff') {
@@ -65,6 +68,25 @@ export const archiveShipments = onCall(async (request) => {
         'invalid-argument',
         `ids array must not exceed ${MAX_IDS} entries (got ${ids.length})`,
       )
+    }
+  }
+
+  if (mode === 'filter') {
+    if (!criteria || typeof criteria !== 'object' || Array.isArray(criteria)) {
+      throw new HttpsError('invalid-argument', 'criteria object is required for filter mode')
+    }
+    const hasStatus = typeof criteria.status === 'string' && criteria.status.trim() !== ''
+    const hasDateFrom = typeof criteria.dateFrom === 'string' && criteria.dateFrom.trim() !== ''
+    const hasDateTo = typeof criteria.dateTo === 'string' && criteria.dateTo.trim() !== ''
+    const hasSearch = typeof criteria.search === 'string' && criteria.search.trim() !== ''
+    if (!hasStatus && !hasDateFrom && !hasDateTo && !hasSearch) {
+      throw new HttpsError('invalid-argument', 'at least one criterion (status, dateFrom, dateTo, search) is required for filter mode')
+    }
+    if (hasDateFrom && isNaN(Date.parse(criteria.dateFrom.trim()))) {
+      throw new HttpsError('invalid-argument', 'dateFrom must be a valid date string')
+    }
+    if (hasDateTo && isNaN(Date.parse(criteria.dateTo.trim()))) {
+      throw new HttpsError('invalid-argument', 'dateTo must be a valid date string')
     }
   }
 
@@ -97,6 +119,61 @@ export const archiveShipments = onCall(async (request) => {
         .orderBy('date')
         .orderBy('__name__')
         .limit(chunkSize)
+
+      if (cursor) {
+        const cursorDocSnap = await firestore
+          .doc(`organizations/${orgSlug}/shipments/${cursor}`)
+          .get()
+        if (cursorDocSnap.exists) {
+          query = query.startAfter(cursorDocSnap)
+        }
+      }
+
+      const snapshot = await query.get()
+      docsToProcess = snapshot.docs
+      done = docsToProcess.length < chunkSize
+      lastDocId =
+        docsToProcess.length > 0
+          ? docsToProcess[docsToProcess.length - 1].id
+          : null
+    } else if (mode === 'filter') {
+      let query = firestore
+        .collection(`organizations/${orgSlug}/shipments`)
+
+      const orderFields = []
+
+      if (typeof criteria.status === 'string' && criteria.status.trim() !== '') {
+        query = query.where('status', '==', criteria.status.trim())
+        orderFields.push('status')
+      }
+
+      const dateFrom = typeof criteria.dateFrom === 'string' && criteria.dateFrom.trim() !== ''
+        ? criteria.dateFrom.trim() : null
+      const dateTo = typeof criteria.dateTo === 'string' && criteria.dateTo.trim() !== ''
+        ? criteria.dateTo.trim() : null
+
+      if (dateFrom) {
+        query = query.where('date', '>=', dateFrom)
+        if (!orderFields.includes('date')) orderFields.push('date')
+      }
+      if (dateTo) {
+        query = query.where('date', '<=', dateTo)
+        if (!orderFields.includes('date')) orderFields.push('date')
+      }
+
+      const search = typeof criteria.search === 'string' && criteria.search.trim() !== ''
+        ? criteria.search.trim() : null
+
+      if (search) {
+        query = query.where('patientNameLower', '>=', search)
+        query = query.where('patientNameLower', '<=', search + '\uf8ff')
+        orderFields.push('patientNameLower')
+      }
+
+      for (const field of orderFields) {
+        query = query.orderBy(field)
+      }
+      query = query.orderBy('__name__').limit(chunkSize)
 
       if (cursor) {
         const cursorDocSnap = await firestore
@@ -180,6 +257,8 @@ export const archiveShipments = onCall(async (request) => {
       }
       if (mode === 'cutoff') {
         auditEntry.cutoffDate = cutoffDate
+      } else if (mode === 'filter') {
+        auditEntry.criteria = criteria
       } else {
         auditEntry.idsCount = ids.length
       }

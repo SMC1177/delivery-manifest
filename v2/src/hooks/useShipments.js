@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   collection,
   query,
   where,
   getDocs,
-
+  getCountFromServer,
+  limit,
+  orderBy,
+  startAfter,
+  startAt,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -33,10 +37,23 @@ export function formatCentralTime(date) {
 
 export function useShipments(orgSlug, options = {}) {
   const { user } = useAuth()
-  const { archived = false, backfillComplete = false } = options
+  const { archived = false, backfillComplete = false, searchBackfillComplete = false, pageSize = 25, status, dateFrom, dateTo, search = '' } = options
   const [shipments, setShipments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [hasNext, setHasNext] = useState(false)
+  const [hasPrev, setHasPrev] = useState(false)
+  const cursorStackRef = useRef([])
+  const pageFirstDocRef = useRef(null)
+  const pageLastDocRef = useRef(null)
+  const isSearchActiveRef = useRef(false)
+
+  const [total, setTotal] = useState(0)
+  const [statusCounts, setStatusCounts] = useState({})
+  const [countsLoading, setCountsLoading] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchCapReached, setSearchCapReached] = useState(false)
 
   const fetchShipments = useCallback(async () => {
     if (!orgSlug) {
@@ -44,22 +61,47 @@ export function useShipments(orgSlug, options = {}) {
       setLoading(false)
       return
     }
+    if (isSearchActiveRef.current) return
     setLoading(true)
     try {
       const colRef = collection(db, 'organizations', orgSlug, 'shipments')
-      const constraints = archived
-        ? [where('archived', '==', true)]
-        : backfillComplete
-          ? [where('archived', '==', false)]
-          : []
-      const snap = await getDocs(query(colRef, ...constraints))
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-      docs.sort((a, b) => {
-        const dateA = a.date || ''
-        const dateB = b.date || ''
-        return dateB.localeCompare(dateA)
-      })
-      setShipments(docs)
+      if (!searchBackfillComplete) {
+        const constraints = archived
+          ? [where('archived', '==', true)]
+          : backfillComplete
+            ? [where('archived', '==', false)]
+            : []
+        const snap = await getDocs(query(colRef, ...constraints))
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        docs.sort((a, b) => {
+          const dateA = a.date || ''
+          const dateB = b.date || ''
+          return dateB.localeCompare(dateA)
+        })
+        setShipments(docs)
+      } else {
+        const constraints = [where('archived', '==', false)]
+        if (status && status !== 'all') {
+          constraints.push(where('status', '==', status))
+        }
+        if (dateFrom) {
+          constraints.push(where('date', '>=', dateFrom))
+        }
+        if (dateTo) {
+          constraints.push(where('date', '<=', dateTo))
+        }
+        constraints.push(orderBy('date', 'desc'))
+        constraints.push(limit(pageSize))
+        const snap = await getDocs(query(colRef, ...constraints))
+        cursorStackRef.current = []
+        pageFirstDocRef.current = snap.docs.length > 0 ? snap.docs[0] : null
+        pageLastDocRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        setShipments(docs)
+        setCurrentPage(1)
+        setHasNext(snap.docs.length === pageSize)
+        setHasPrev(false)
+      }
       setError(null)
     } catch (err) {
       console.error('Shipments fetch error:', err)
@@ -67,7 +109,7 @@ export function useShipments(orgSlug, options = {}) {
     } finally {
       setLoading(false)
     }
-  }, [orgSlug, archived, backfillComplete])
+  }, [orgSlug, archived, backfillComplete, searchBackfillComplete, pageSize, status, dateFrom, dateTo])
 
   useEffect(() => { fetchShipments() }, [fetchShipments])
 
@@ -77,6 +119,165 @@ export function useShipments(orgSlug, options = {}) {
     document.addEventListener('visibilitychange', onFocus)
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus) }
   }, [fetchShipments])
+
+  // Server-side counts (only when searchBackfillComplete is true)
+  const STATUS_VALUES = ['pending', 'shipped', 'in_transit', 'delivered', 'exception']
+  useEffect(() => {
+    if (!orgSlug || !searchBackfillComplete) return
+    let cancelled = false
+    setCountsLoading(true)
+
+    async function fetchCounts() {
+      try {
+        const colRef = collection(db, 'organizations', orgSlug, 'shipments')
+        const baseConstraints = [where('archived', '==', false)]
+        if (dateFrom) baseConstraints.push(where('date', '>=', dateFrom))
+        if (dateTo) baseConstraints.push(where('date', '<=', dateTo))
+
+        const isStatusActive = status && status !== 'all'
+        const totalConstraints = isStatusActive
+          ? [...baseConstraints, where('status', '==', status)]
+          : baseConstraints
+
+        const [totalSnap, allSnap, ...statusSnaps] = await Promise.all([
+          getCountFromServer(query(colRef, ...totalConstraints)),
+          getCountFromServer(query(colRef, ...baseConstraints)),
+          ...STATUS_VALUES.map(s =>
+            getCountFromServer(query(colRef, ...baseConstraints, where('status', '==', s)))
+          ),
+        ])
+
+        if (cancelled) return
+
+        const counts = { all: allSnap.data().count }
+        STATUS_VALUES.forEach((s, i) => {
+          counts[s] = statusSnaps[i].data().count
+        })
+
+        setTotal(totalSnap.data().count)
+        setStatusCounts(counts)
+        setError(null)
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Counts query failed:', err)
+          setError(err.message || 'Failed to load filter counts')
+        }
+      } finally {
+        if (!cancelled) setCountsLoading(false)
+      }
+    }
+
+    fetchCounts()
+    return () => { cancelled = true }
+  }, [orgSlug, searchBackfillComplete, status, dateFrom, dateTo])
+
+  // Client-side counts (when searchBackfillComplete is false, derive from loaded array)
+  useEffect(() => {
+    if (searchBackfillComplete) return
+    const counts = { all: shipments.length }
+    for (const s of shipments) {
+      counts[s.status] = (counts[s.status] || 0) + 1
+    }
+    setTotal(shipments.length)
+    setStatusCounts(counts)
+  }, [shipments, searchBackfillComplete])
+
+  // Server-side bounded search (only when searchBackfillComplete is true and search is non-empty)
+  useEffect(() => {
+    if (!orgSlug || !searchBackfillComplete) return
+    const q = (search || '').trim().toLowerCase()
+    if (!q) {
+      setIsSearching(false)
+      setSearchCapReached(false)
+      isSearchActiveRef.current = false
+      fetchShipments()
+      return
+    }
+
+    let cancelled = false
+    setIsSearching(true)
+    isSearchActiveRef.current = true
+    setLoading(true)
+
+    async function runSearch() {
+      try {
+        const colRef = collection(db, 'organizations', orgSlug, 'shipments')
+        const SEARCH_CAP = 300
+
+        // Query 1: patient-name prefix (lowercase, Firestore inequality requires orderBy on the same field)
+        const nameQ = query(
+          colRef,
+          where('archived', '==', false),
+          where('patientNameLower', '>=', q),
+          where('patientNameLower', '<=', q + '\uf8ff'),
+          orderBy('patientNameLower'),
+          limit(SEARCH_CAP)
+        )
+
+        // Query 2: exact tracking number
+        const trackingQ = query(
+          colRef,
+          where('archived', '==', false),
+          where('trackingNumber', '==', search.trim()),
+          limit(SEARCH_CAP)
+        )
+
+        // Query 3: exact Rx number via array-contains
+        const rxQ = query(
+          colRef,
+          where('archived', '==', false),
+          where('rxNumbers', 'array-contains', search.trim()),
+          limit(SEARCH_CAP)
+        )
+
+        const results = await Promise.allSettled([
+          getDocs(nameQ),
+          getDocs(trackingQ),
+          getDocs(rxQ),
+        ])
+
+        if (cancelled) return
+
+        // If any query failed, surface the error — partial results are silently wrong
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            throw r.reason
+          }
+        }
+
+        // Merge and deduplicate by document id
+        const seen = new Set()
+        const merged = []
+        for (const r of results) {
+          for (const d of r.value.docs) {
+            if (!seen.has(d.id)) {
+              seen.add(d.id)
+              merged.push({ id: d.id, ...d.data() })
+            }
+          }
+        }
+
+        const capped = merged.length >= SEARCH_CAP
+        const final = merged.slice(0, SEARCH_CAP)
+
+        setShipments(final)
+        setSearchCapReached(capped)
+        setError(null)
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Search error:', err)
+          setError(err.message || 'Search failed')
+          setIsSearching(false)
+          isSearchActiveRef.current = false
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    runSearch()
+    return () => { cancelled = true }
+  }, [orgSlug, searchBackfillComplete, search])
 
   /**
    * Add a shipment with duplicate detection.
@@ -229,5 +430,79 @@ export function useShipments(orgSlug, options = {}) {
     await fetchShipments()
   }
 
-  return { shipments, loading, error, refresh: fetchShipments, addShipment, updateShipment, removeShipment }
+  const nextPage = useCallback(async () => {
+    if (isSearching || !hasNext || !pageLastDocRef.current || !orgSlug) return
+    setLoading(true)
+    try {
+      const colRef = collection(db, 'organizations', orgSlug, 'shipments')
+      const constraints = [where('archived', '==', false)]
+      if (status && status !== 'all') {
+        constraints.push(where('status', '==', status))
+      }
+      if (dateFrom) {
+        constraints.push(where('date', '>=', dateFrom))
+      }
+      if (dateTo) {
+        constraints.push(where('date', '<=', dateTo))
+      }
+      constraints.push(orderBy('date', 'desc'))
+      if (pageFirstDocRef.current) {
+        cursorStackRef.current.push(pageFirstDocRef.current)
+      }
+      constraints.push(startAfter(pageLastDocRef.current))
+      constraints.push(limit(pageSize))
+      const snap = await getDocs(query(colRef, ...constraints))
+      pageFirstDocRef.current = snap.docs.length > 0 ? snap.docs[0] : null
+      pageLastDocRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      setShipments(docs)
+      setCurrentPage(p => p + 1)
+      setHasNext(snap.docs.length === pageSize)
+      setHasPrev(true)
+      setError(null)
+    } catch (err) {
+      console.error('Shipments nextPage error:', err)
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [orgSlug, status, dateFrom, dateTo, pageSize, hasNext, isSearching])
+
+  const prevPage = useCallback(async () => {
+    if (isSearching || !hasPrev || cursorStackRef.current.length === 0 || !orgSlug) return
+    setLoading(true)
+    try {
+      const colRef = collection(db, 'organizations', orgSlug, 'shipments')
+      const constraints = [where('archived', '==', false)]
+      if (status && status !== 'all') {
+        constraints.push(where('status', '==', status))
+      }
+      if (dateFrom) {
+        constraints.push(where('date', '>=', dateFrom))
+      }
+      if (dateTo) {
+        constraints.push(where('date', '<=', dateTo))
+      }
+      constraints.push(orderBy('date', 'desc'))
+      const cursor = cursorStackRef.current.pop()
+      constraints.push(startAt(cursor))
+      constraints.push(limit(pageSize))
+      const snap = await getDocs(query(colRef, ...constraints))
+      pageFirstDocRef.current = snap.docs.length > 0 ? snap.docs[0] : null
+      pageLastDocRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      setShipments(docs)
+      setCurrentPage(p => p - 1)
+      setHasNext(true)
+      setHasPrev(cursorStackRef.current.length > 0)
+      setError(null)
+    } catch (err) {
+      console.error('Shipments prevPage error:', err)
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [orgSlug, status, dateFrom, dateTo, pageSize, hasPrev, isSearching])
+
+  return { shipments, loading, error, total, statusCounts, countsLoading, isSearching, searchCapReached, refresh: fetchShipments, addShipment, updateShipment, removeShipment, nextPage, prevPage, currentPage, hasNext, hasPrev }
 }
