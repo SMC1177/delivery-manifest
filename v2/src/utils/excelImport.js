@@ -7,7 +7,7 @@ export const UNIVERSAL_FIELDS = [
   { key: 'phone', label: 'Phone', required: false },
   { key: 'dateOfBirth', label: 'Date of Birth', required: false },
   { key: 'rxNumbers', label: 'RX Numbers', required: false },
-  { key: 'trackingNumber', label: 'Tracking #', required: true },
+  { key: 'trackingNumber', label: 'Tracking #', required: false },
   { key: 'address', label: 'Address', required: false, isAddress: true },
   { key: 'carrier', label: 'Carrier', required: false },
   { key: 'date', label: 'Date', required: false },
@@ -247,13 +247,35 @@ function buildDedupKey(trackingNumber, rxNumbers, refillNumber) {
 }
 
 /**
+ * Build a patient-based fill key for matching tracking-less pending rows
+ * against later tracking-bearing imports. Lowercases/trims all parts and sorts
+ * Rx numbers the same way as buildDedupKey. Returns null if both rx and
+ * refill are empty — without at least one, the key collapses to name+dob
+ * and would wrongly merge two different prescriptions for the same person.
+ */
+function buildPatientFillKey(patientName, dob, rxNumbers, refillNumber) {
+  const name = (patientName || '').trim().toLowerCase()
+  const dobStr = (dob || '').trim().toLowerCase()
+  const rx = Array.isArray(rxNumbers)
+    ? rxNumbers.map(r => String(r).trim().toLowerCase()).sort().join('|')
+    : String(rxNumbers || '').trim().toLowerCase()
+  const refill = String(refillNumber || '').trim().toLowerCase()
+  if (!rx && !refill) return null
+  return `${name}::${dobStr}::${rx}::${refill}`
+}
+
+/**
  * Parse an Excel file using a saved column mapping.
  *
  * Dedup logic (for pharmacies that re-import daily with updated dates):
  * 1. Match by tracking # + Rx # + refill # (composite key)
  * 2. If composite key matches an existing shipment AND the new date is newer → update
  * 3. If composite key matches AND date is same or older → skip (true duplicate)
- * 4. If no match → new shipment
+ * 4. If no tracking-key match, try matching a pending (tracking-less) shipment
+ *    by patient name, DOB, Rx #s, and refill # (patient fill key)
+ * 5. Rows without a tracking number are created as pending shipments; a later
+ *    re-import with tracking numbers merges them via the patient fill key
+ * 6. Ambiguous fill keys (matching multiple pending rows) are flagged for review
  *
  * @param {File} file
  * @param {Record<string, string | string[]>} mapping - column mapping
@@ -267,7 +289,7 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
 
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
   if (rows.length === 0) {
-    return { shipments: [], updates: [], skippedNoTracking: 0, skippedDuplicate: 0, totalRows: 0, preview: [], unmappedColumns: [] }
+    return { shipments: [], updates: [], skippedNoTracking: 0, skippedDuplicate: 0, pendingCreated: 0, trackingMerged: 0, needsReview: 0, totalRows: 0, preview: [], unmappedColumns: [] }
   }
 
   const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
@@ -283,31 +305,89 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
     existingByKey.set(key, ship)
   }
 
+  // Index existing tracking-less shipments by patient fill key
+  const pendingByFillKey = new Map()
+  const ambiguousFillKeys = new Set()
+  for (const ship of existingShipments) {
+    if (!ship.id) continue // skip docs without an id (should never happen, but guard)
+    if (ship.trackingNumber && ship.trackingNumber.trim()) continue
+    // Existing Firestore docs use 'dob' (not 'dateOfBirth') — the writer
+    // in ImportPreviewModal persists the field under that name.  Incoming
+    // mapped rows carry dateOfBirth (the mapped field name), so the key
+    // for existing docs must read ship.dob first.
+    const fillKey = buildPatientFillKey(ship.patientName, ship.dob || ship.dateOfBirth, ship.rxNumbers, ship.refillNumber)
+    if (!fillKey) continue
+    if (pendingByFillKey.has(fillKey)) {
+      ambiguousFillKeys.add(fillKey)
+    } else {
+      pendingByFillKey.set(fillKey, ship)
+    }
+  }
+
   let skippedNoTracking = 0
   let skippedDuplicate = 0
+  let pendingCreated = 0
+  let trackingMerged = 0
+  let needsReview = 0
   const shipments = [] // new inserts
   const updates = []   // existing records with newer dates
+  const inFilePendingRows = new Map() // fillKey → in-file pending row (no id yet)
 
   for (const s of allMapped) {
-    if (!s.trackingNumber) { skippedNoTracking++; continue }
+    if (s.trackingNumber) {
+      // Row has a tracking number — try exact dedup first
+      const key = buildDedupKey(s.trackingNumber, s.rxNumbers, s.refillNumber)
+      const existing = existingByKey.get(key)
 
-    const key = buildDedupKey(s.trackingNumber, s.rxNumbers, s.refillNumber)
-    const existing = existingByKey.get(key)
-
-    if (existing) {
-      // Composite key matched — check if date is newer
-      const newDate = s.date || ''
-      const oldDate = existing.date || ''
-      if (newDate > oldDate) {
-        // Newer date → update the existing record
-        updates.push({ shipmentId: existing.id, ...s })
+      if (existing) {
+        // Composite key matched — check if date is newer
+        const newDate = s.date || ''
+        const oldDate = existing.date || ''
+        if (newDate > oldDate) {
+          // Newer date → update the existing record
+          updates.push({ shipmentId: existing.id, ...s })
+        } else {
+          // Same or older date → true duplicate, skip
+          skippedDuplicate++
+        }
       } else {
-        // Same or older date → true duplicate, skip
-        skippedDuplicate++
+        // No match by tracking key — try pending merge
+        const fillKey = buildPatientFillKey(s.patientName, s.dateOfBirth, s.rxNumbers, s.refillNumber)
+        if (fillKey && pendingByFillKey.has(fillKey)) {
+          if (ambiguousFillKeys.has(fillKey)) {
+            needsReview++
+            continue
+          }
+          const pending = pendingByFillKey.get(fillKey)
+          updates.push({ shipmentId: pending.id, ...s })
+          trackingMerged++
+          pendingByFillKey.delete(fillKey)
+        } else if (fillKey && inFilePendingRows.has(fillKey)) {
+          // Matched an in-file pending row from the same spreadsheet —
+          // set the tracking number on the already-queued row instead
+          const inFileRow = inFilePendingRows.get(fillKey)
+          inFileRow.trackingNumber = s.trackingNumber
+          inFileRow.carrier = s.carrier
+          trackingMerged++
+          inFilePendingRows.delete(fillKey)
+        } else {
+          // No pending match either — brand-new shipment
+          shipments.push(s)
+        }
       }
     } else {
-      // No match → new shipment
+      // Row lacks a tracking number — create as pending
+      const fillKey = buildPatientFillKey(s.patientName, s.dateOfBirth, s.rxNumbers, s.refillNumber)
+      if (fillKey && (pendingByFillKey.has(fillKey) || inFilePendingRows.has(fillKey))) {
+        // Already have a pending row with this fill key (persisted or in-file) — duplicate
+        skippedDuplicate++
+        continue
+      }
       shipments.push(s)
+      pendingCreated++
+      if (fillKey) {
+        inFilePendingRows.set(fillKey, s)
+      }
     }
   }
 
@@ -316,6 +396,9 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
     updates,
     skippedNoTracking,
     skippedDuplicate,
+    pendingCreated,
+    trackingMerged,
+    needsReview,
     totalRows: allMapped.length,
     preview: shipments.slice(0, 5),
     unmappedColumns,

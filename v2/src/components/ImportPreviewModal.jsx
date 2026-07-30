@@ -9,7 +9,7 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
   const addToast = useToast()
   const [importing, setImporting] = useState(false)
 
-  const { shipments, updates = [], skippedNoTracking, skippedDuplicate, totalRows, preview, unmappedColumns } = result
+  const { shipments, updates = [], skippedNoTracking, skippedDuplicate, totalRows, preview, unmappedColumns, pendingCreated = 0, trackingMerged = 0, needsReview = 0 } = result
 
   async function handleImport() {
     if (!orgSlug || !user) return
@@ -63,7 +63,7 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
         const chunk = updates.slice(i, i + BATCH_SIZE)
         for (const s of chunk) {
           const ref = doc(db, 'organizations', orgSlug, 'shipments', s.shipmentId)
-          batch.update(ref, {
+          const updateData = {
             patientName: s.patientName || '',
             phone: s.phone || '',
             dob: s.dateOfBirth || '',
@@ -72,10 +72,15 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
             date: s.date || '',
             refillNumber: s.refillNumber || '',
             notes: s.notes || '',
-            carrier: s.carrier || 'ups',
             updatedAt: serverTimestamp(),
             updatedBy: user.uid,
-          })
+          }
+          const tracking = s.trackingNumber?.trim()
+          if (tracking) {
+            updateData.trackingNumber = tracking
+            updateData.carrier = s.carrier || 'ups'
+          }
+          batch.update(ref, updateData)
         }
         await batch.commit()
         updated += chunk.length
@@ -121,6 +126,15 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
             )}
             {skippedDuplicate > 0 && (
               <p className="text-amber-600">{skippedDuplicate} skipped (unchanged duplicates)</p>
+            )}
+            {pendingCreated > 0 && (
+              <p className="text-amber-600">{pendingCreated} awaiting tracking</p>
+            )}
+            {trackingMerged > 0 && (
+              <p className="text-green-700">{trackingMerged} tracking numbers matched to existing deliveries</p>
+            )}
+            {needsReview > 0 && (
+              <p className="text-red-700 font-semibold">{needsReview} need review — matched more than one delivery</p>
             )}
             {unmappedColumns && unmappedColumns.length > 0 && (
               <p className="text-slate-500">{unmappedColumns.length} columns scrubbed (not stored)</p>
