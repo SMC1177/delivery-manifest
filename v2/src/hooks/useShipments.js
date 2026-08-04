@@ -334,26 +334,31 @@ export function useShipments(orgSlug, options = {}) {
       }
     }
 
-    // Rx-based dedup: same patient + same Rx numbers = likely duplicate (regardless of date)
+    // Rx-based dedup: same patient + same Rx numbers + same refill number = duplicate (regardless of date)
     if (newRxNumbers.length > 0 && data.patientName) {
       const patientQuery = query(
         colRef,
         where('patientName', '==', data.patientName.trim())
       )
       const patientSnap = await getDocs(patientQuery)
+      // Refill numbers compare as trimmed, lowercased strings so "2", " 2", and 2
+      // are equivalent, and a missing value on either side becomes "" instead of
+      // comparing undefined to null. Both sides missing still compares equal.
+      const newRefill = String(data.refillNumber ?? '').trim().toLowerCase()
 
       for (const d of patientSnap.docs) {
         const existing = d.data()
         const existingRx = Array.isArray(existing.rxNumbers) ? existing.rxNumbers : []
-        // Check if ALL new Rx numbers already exist on an existing record
+        const existingRefill = String(existing.refillNumber ?? '').trim().toLowerCase()
+        // Check if ALL new Rx numbers already exist on an existing record with the same refill number
         const allRxExist = newRxNumbers.every((rx) => existingRx.includes(rx))
 
-        if (allRxExist && newRxNumbers.length > 0) {
+        if (allRxExist && newRxNumbers.length > 0 && existingRefill === newRefill) {
           return {
             id: d.id,
             merged: false,
             skipped: true,
-            message: `Duplicate skipped — ${existing.patientName} already has a shipment with the same Rx numbers (${newRxNumbers.join(', ')}).`,
+            message: `Duplicate skipped — ${existing.patientName} already has a shipment with the same Rx numbers (${newRxNumbers.join(', ')}) and refill number ${newRefill || '(none)'}.`,
           }
         }
       }

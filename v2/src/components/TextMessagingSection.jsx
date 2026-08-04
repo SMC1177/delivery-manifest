@@ -1,7 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { useTextMessagingSettings } from '../hooks/useTextMessagingSettings'
 import { TEMPLATE_KEYS, TEMPLATE_LABELS, TEMPLATE_DEFAULTS } from '../lib/smsTemplateVars'
+
+// Server-enforced requirements, keyed like TEMPLATE_KEYS. Mirrors
+// functions/sms-templates.js validateOptInInvite (case-insensitive substring
+// test for `yes` and `stop`) so the UI agrees with the send-time check.
+// Advisory only — the server remains the enforcement point.
+const TEMPLATE_REQUIREMENTS = {
+  optInInvite: {
+    note: 'Must include the words YES and STOP — patients reply YES to opt in and STOP to opt out.',
+    words: ['YES', 'STOP'],
+  },
+}
 
 function generateToken() {
   const arr = new Uint8Array(24)
@@ -87,6 +98,73 @@ function CredentialsForm({ value, onSave, onCancel }) {
           <button type="button" onClick={onCancel} className="px-3 py-1 text-sm rounded border">Cancel</button>
         )}
       </div>
+    </div>
+  )
+}
+
+function TemplateTextarea({ label, stored, onCommit, requirement }) {
+  const [value, setValue] = useState(stored)
+  const [focused, setFocused] = useState(false)
+  const baseRef = useRef(stored)        // server value our last write/seed was based on
+  const committedRef = useRef(null)     // value of an in-flight write, null when none
+
+  // Keep the draft in sync with the server, but never while the user is typing,
+  // and never while our own write is still propagating (stored lags by a round-trip).
+  useEffect(() => {
+    if (focused) return
+    if (committedRef.current !== null) {
+      if (stored === committedRef.current) {
+        // Our write came back — we're synced again.
+        baseRef.current = stored
+        committedRef.current = null
+      } else if (stored !== baseRef.current) {
+        // Server moved on from our base to a different value (e.g. another admin).
+        setValue(stored)
+        baseRef.current = stored
+        committedRef.current = null
+      }
+      return
+    }
+    if (stored !== value) {
+      setValue(stored)
+      baseRef.current = stored
+    }
+  }, [stored, focused, value])
+
+  function handleBlur() {
+    setFocused(false)
+    const lastWritten = committedRef.current ?? baseRef.current
+    if (value !== lastWritten) {
+      committedRef.current = value
+      onCommit(value)
+    }
+  }
+
+  // Advisory check mirroring validateOptInInvite: case-insensitive substring
+  // test per required word, driven off the local draft so it updates as they type.
+  const missingWords = requirement
+    ? requirement.words.filter((w) => !value.toLowerCase().includes(w.toLowerCase()))
+    : []
+
+  return (
+    <div>
+      <div className="text-xs text-slate-500 mb-0.5">{label}</div>
+      {requirement && (
+        <p className="text-xs text-amber-700 mb-1">{requirement.note}</p>
+      )}
+      <textarea
+        rows={2}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={handleBlur}
+        className="w-full px-2 py-1 border rounded text-sm font-mono"
+      />
+      {missingWords.length > 0 && (
+        <p className="text-xs text-red-600 mt-1" role="alert">
+          Must include the word{missingWords.length > 1 ? 's' : ''} {missingWords.join(' and ')}
+        </p>
+      )}
     </div>
   )
 }
@@ -305,15 +383,13 @@ export default function TextMessagingSection({ slug, enabledFields, addToast, lo
             <label className="block text-sm font-medium text-slate-700 mb-2">Message templates</label>
             <div className="space-y-2">
               {TEMPLATE_KEYS.map((k) => (
-                <div key={k}>
-                  <div className="text-xs text-slate-500 mb-0.5">{TEMPLATE_LABELS[k]}</div>
-                  <textarea
-                    rows={2}
-                    value={settings.templates?.[k] ?? TEMPLATE_DEFAULTS[k]}
-                    onChange={(e) => patch({ templates: { ...settings.templates, [k]: e.target.value } }, 'templates')}
-                    className="w-full px-2 py-1 border rounded text-sm font-mono"
-                  />
-                </div>
+                <TemplateTextarea
+                  key={k}
+                  label={TEMPLATE_LABELS[k]}
+                  stored={settings.templates?.[k] ?? TEMPLATE_DEFAULTS[k]}
+                  requirement={TEMPLATE_REQUIREMENTS[k]}
+                  onCommit={(v) => patch({ templates: { ...settings.templates, [k]: v } }, 'templates')}
+                />
               ))}
             </div>
             <p className="text-xs text-slate-400 mt-1">

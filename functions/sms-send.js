@@ -129,6 +129,7 @@ export const sendSms = onCall(async (request) => {
       userId: request.auth.uid,
       timestamp: FieldValue.serverTimestamp(),
     })
+    console.error('sendSms: RingCentral send failed', { orgSlug, templateKey, error: e.message })
     throw new HttpsError('internal', e.message)
   }
 
