@@ -33,13 +33,13 @@ export default function Layout() {
         <div className="mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-8">
-              <Link to={`/${slug}/dashboard`} className="flex items-center gap-3">
+              <Link to={`/${slug}/dashboard`} className="flex items-center gap-4">
                 {org?.logoUrl ? (
                   <>
                     <img
                       src={org.logoUrl}
                       alt={org.name || 'Pharmacy'}
-                      className="h-10 max-w-[220px] object-contain"
+                      className="h-14 max-w-[280px] object-contain"
                     />
                     {org?.showNameWithLogo && (
                       <span className="text-base font-bold text-slate-900 hidden sm:inline">
