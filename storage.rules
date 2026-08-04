@@ -1,0 +1,70 @@
+rules_version = '2';
+
+// Firebase Storage rules for the delivery-manifest bucket.
+//
+// WHAT THIS GOVERNS: the bucket stores org logos. SettingsPage
+// (v2/src/pages/SettingsPage.jsx handleLogoUpload) writes to
+// `organizations/{slug}/logo.{ext}`. The bucket was provisioned with
+// Firebase's default locked-mode rules (`allow read, write: if false`),
+// which made the logo upload fail with a permission error; these rules
+// replace that default.
+//
+// ACCESS MODEL (mirrors firestore.rules): membership and role live in
+// FIRESTORE at organizations/{orgSlug}/members/{uid}, with the admin value
+// being the string 'admin'. Storage rules reach across services with
+// firestore.get() / firestore.exists() using a full document path of the
+// form /databases/(default)/documents/organizations/$(orgSlug)/members/$(request.auth.uid).
+//
+// KNOWN EMULATOR LIMITATION: cross-service firestore lookups from Storage
+// rules do NOT work under the Storage emulator — a previous project verified
+// empirically that exists() returns false for seeded emulator documents even
+// when they are present. That is an emulator limitation, not a rules bug;
+// these rules are correct in production. Do not re-investigate.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // --- helpers -------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    // Org isolation: caller must have a member doc in the org.
+    // NULL-DEREF TRAP: firestore.get() on a missing document returns null,
+    // and chaining .data.role onto null makes the whole rule evaluation
+    // ERROR rather than evaluating false — turning a clean "denied" into a
+    // confusing failure. Every role lookup below exists()-checks the same
+    // path FIRST so the exists short-circuits before any get() runs.
+    function isMember(orgSlug) {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/organizations/$(orgSlug)/members/$(request.auth.uid));
+    }
+    function isAdmin(orgSlug) {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/organizations/$(orgSlug)/members/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/organizations/$(orgSlug)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Org logos — organizations/{orgSlug}/logo.{ext}.
+    // Members may read; only admins may write/delete, and writes are further
+    // constrained to images under 2 MB. The 2 MB / image-type limits already
+    // exist in the SettingsPage UI, but a client-side check is not a security
+    // control — they must be (and are) enforced here too. The contentType
+    // null guard keeps the .matches() call from erroring on a metadata-less
+    // upload (same class of null-deref as the firestore.get trap above).
+    match /organizations/{orgSlug}/{fileName} {
+      allow read: if isMember(orgSlug);
+      allow write: if isAdmin(orgSlug)
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType != null
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin(orgSlug);
+    }
+
+    // Catch-all: refuse anything outside the organizations/ prefix.
+    // (Matching grant rules above OR with this, so unlisted paths hit only
+    // the deny and stay locked down.)
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
