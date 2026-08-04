@@ -913,3 +913,6 @@ export { undoImport } from './undo-import.js'
 
 // --- Backfill patientNameLower for server-side prefix search (admin-only onCall) ---
 export { backfillSearchFields } from './backfill-search-fields.js'
+
+// --- Org logo upload via Admin SDK (admin-only onCall) ---
+export { uploadOrgLogo } from './upload-org-logo.js'

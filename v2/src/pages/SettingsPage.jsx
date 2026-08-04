@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { getFunctions, httpsCallable } from 'firebase/functions'
 import { collection, getDocs, doc, getDoc, deleteDoc, setDoc, writeBatch } from 'firebase/firestore'
-import { auth, db, storage } from '../lib/firebase'
+import { auth, db } from '../lib/firebase'
 import { useOrganization } from '../hooks/useOrganization'
 import { useInvites } from '../hooks/useInvites'
 import { useAuditLog, useAuditLogEntries } from '../hooks/useAuditLog'
@@ -23,7 +23,9 @@ function BrandingSection({ org, slug, updateOrgSettings, logAction, addToast }) 
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Validate file
+    // Validate file. These checks are convenience only (fast feedback before
+    // any network call) — uploadOrgLogo enforces the same type and size limits
+    // server-side, so keep them but don't treat them as the security control.
     const validTypes = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp']
     if (!validTypes.includes(file.type)) {
       addToast('Please upload a PNG, JPG, SVG, or WebP image', 'error')
@@ -36,16 +38,34 @@ function BrandingSection({ org, slug, updateOrgSettings, logAction, addToast }) 
 
     setUploading(true)
     try {
-      const ext = file.name.split('.').pop()
-      const storageRef = ref(storage, `organizations/${slug}/logo.${ext}`)
-      await uploadBytes(storageRef, file)
-      const url = await getDownloadURL(storageRef)
+      // Read the file as a data URL, then hand the encoded payload to the
+      // uploadOrgLogo callable. The callable accepts either the full
+      // data:<type>;base64,<payload> string or the bare base64 payload; we
+      // deliberately pass the whole data URL so the image type rides along
+      // with the data (the explicit contentType arg is belt-and-braces).
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(file)
+      })
+      const uploadOrgLogo = httpsCallable(getFunctions(), 'uploadOrgLogo')
+      const result = await uploadOrgLogo({
+        slug,
+        contentType: file.type,
+        dataBase64: dataUrl,
+      })
+      const url = result.data.url
       await updateOrgSettings({ logoUrl: url })
-      await logAction('org.logo_updated', slug, { logoUrl: url })
+      // No client-side org.logo_updated audit call here: uploadOrgLogo already
+      // writes that audit record server-side, so logging again would double it.
       addToast('Logo uploaded!')
     } catch (err) {
       console.error('Logo upload error:', err)
-      addToast('Failed to upload logo: ' + err.message, 'error')
+      // The callable surfaces its rejection message (e.g. 'Image is too large
+      // (max 2MB)' or 'Admin access required'), so show the real reason
+      // instead of a bare 500.
+      addToast('Failed to upload logo: ' + (err?.message || 'unknown error'), 'error')
     } finally {
       setUploading(false)
       if (logoInputRef.current) logoInputRef.current.value = ''

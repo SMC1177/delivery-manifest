@@ -2,24 +2,35 @@ rules_version = '2';
 
 // Firebase Storage rules for the delivery-manifest bucket.
 //
-// WHAT THIS GOVERNS: the bucket stores org logos. SettingsPage
-// (v2/src/pages/SettingsPage.jsx handleLogoUpload) writes to
-// `organizations/{slug}/logo.{ext}`. The bucket was provisioned with
-// Firebase's default locked-mode rules (`allow read, write: if false`),
-// which made the logo upload fail with a permission error; these rules
-// replace that default.
+// WHAT THIS GOVERNS: the bucket stores org logos, served to members as
+// `organizations/{orgSlug}/{fileName}` for the org header.
 //
-// ACCESS MODEL (mirrors firestore.rules): membership and role live in
-// FIRESTORE at organizations/{orgSlug}/members/{uid}, with the admin value
-// being the string 'admin'. Storage rules reach across services with
-// firestore.get() / firestore.exists() using a full document path of the
-// form /databases/(default)/documents/organizations/$(orgSlug)/members/$(request.auth.uid).
+// WRITES ARE SERVER-SIDE — DO NOT ADD A CLIENT WRITE GRANT. Org logo
+// uploads are performed by the `uploadOrgLogo` callable Cloud Function,
+// which writes the object through the Firebase Admin SDK. Admin SDK writes
+// BYPASS these rules by design, so clients are deliberately granted no
+// write or delete access here: `allow write` / `allow delete` were removed
+// from the org match block, and the catch-all denies everything else.
+// Why: the client upload path failed through three successive gates
+// (locked-mode default rules, then cross-service permission resolution,
+// then a client-side-only constraint that was never a security control),
+// and moving the write server-side removed the cross-service permission
+// check, the contentType condition and the per-upload Firestore read cost
+// from the critical path. Client uploads are a dead design; the callable
+// owns all writes. Do not restore the client write grant.
+//
+// READS (mirrors firestore.rules): membership lives in FIRESTORE at
+// organizations/{orgSlug}/members/{uid}. Storage rules reach across
+// services with firestore.exists() using a full document path of the form
+// /databases/(default)/documents/organizations/$(orgSlug)/members/$(request.auth.uid).
 //
 // KNOWN EMULATOR LIMITATION: cross-service firestore lookups from Storage
 // rules do NOT work under the Storage emulator — a previous project verified
 // empirically that exists() returns false for seeded emulator documents even
 // when they are present. That is an emulator limitation, not a rules bug;
-// these rules are correct in production. Do not re-investigate.
+// these rules are correct in production. Do not re-investigate. The member
+// read check still depends on such a lookup, so under the Storage emulator
+// the logo simply does not display — a degraded read, not a hole.
 
 service firebase.storage {
   match /b/{bucket}/o {
@@ -28,36 +39,24 @@ service firebase.storage {
     function isSignedIn() {
       return request.auth != null;
     }
-    // Org isolation: caller must have a member doc in the org.
-    // NULL-DEREF TRAP: firestore.get() on a missing document returns null,
-    // and chaining .data.role onto null makes the whole rule evaluation
-    // ERROR rather than evaluating false — turning a clean "denied" into a
-    // confusing failure. Every role lookup below exists()-checks the same
-    // path FIRST so the exists short-circuits before any get() runs.
+    // Org isolation: caller must have a member doc in the org. Uses only
+    // firestore.exists() — the former role lookup (firestore.get().data.role
+    // == 'admin') is gone because writes moved server-side and no admin
+    // check is needed here anymore. A failing exists() degrades to a logo
+    // that does not display, not a security hole.
     function isMember(orgSlug) {
       return isSignedIn()
         && firestore.exists(/databases/(default)/documents/organizations/$(orgSlug)/members/$(request.auth.uid));
     }
-    function isAdmin(orgSlug) {
-      return isSignedIn()
-        && firestore.exists(/databases/(default)/documents/organizations/$(orgSlug)/members/$(request.auth.uid))
-        && firestore.get(/databases/(default)/documents/organizations/$(orgSlug)/members/$(request.auth.uid)).data.role == 'admin';
-    }
 
-    // Org logos — organizations/{orgSlug}/logo.{ext}.
-    // Members may read; only admins may write/delete, and writes are further
-    // constrained to images under 2 MB. The 2 MB / image-type limits already
-    // exist in the SettingsPage UI, but a client-side check is not a security
-    // control — they must be (and are) enforced here too. The contentType
-    // null guard keeps the .matches() call from erroring on a metadata-less
-    // upload (same class of null-deref as the firestore.get trap above).
+    // Org logos — organizations/{orgSlug}/{fileName}.
+    // Members may read, so the header can render the logo. Client writes
+    // are denied outright: the uploadOrgLogo callable writes via the Admin
+    // SDK, which bypasses these rules by design, so the former write/delete
+    // grants (and the 2 MB / image-contentType conditions they carried)
+    // have been removed and are no longer part of these rules.
     match /organizations/{orgSlug}/{fileName} {
       allow read: if isMember(orgSlug);
-      allow write: if isAdmin(orgSlug)
-        && request.resource.size < 2 * 1024 * 1024
-        && request.resource.contentType != null
-        && request.resource.contentType.matches('image/.*');
-      allow delete: if isAdmin(orgSlug);
     }
 
     // Catch-all: refuse anything outside the organizations/ prefix.
