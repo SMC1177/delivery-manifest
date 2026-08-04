@@ -39,7 +39,7 @@ export default function Layout() {
                     <img
                       src={org.logoUrl}
                       alt={org.name || 'Pharmacy'}
-                      className="h-16 max-w-[280px] object-contain"
+                      className="h-[60px] max-w-[280px] object-contain"
                     />
                     {org?.showNameWithLogo && (
                       <span className="text-base font-bold text-slate-900 hidden sm:inline">
