@@ -27,10 +27,18 @@ describe('autoMapColumns', () => {
     expect(result.phone).toBe('Customer Primary Phone Number')
   })
 
-  it('4. unknown column like "Drug GPI" returns no mapping', () => {
+  it('4. "Drug GPI", "NDC" and "AWP Cost" each map to their own field', () => {
     const result = autoMapColumns(['Drug GPI', 'NDC', 'AWP Cost'])
+    expect(result.drugGpi).toBe('Drug GPI')
+    expect(result.ndc).toBe('NDC')
+    expect(result.awpCost).toBe('AWP Cost')
+    // The new rules must not over-match into unrelated fields.
     expect(result.patientName).toBeUndefined()
     expect(result.trackingNumber).toBeUndefined()
+  })
+
+  it('4b. a genuinely unrecognised column contributes nothing to the mapping', () => {
+    const result = autoMapColumns(['Sprocket Torque Rating', 'Internal Batch Ref'])
     expect(Object.keys(result)).toHaveLength(0)
   })
 

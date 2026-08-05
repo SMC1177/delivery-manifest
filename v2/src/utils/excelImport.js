@@ -13,6 +13,31 @@ export const UNIVERSAL_FIELDS = [
   { key: 'date', label: 'Date', required: false },
   { key: 'refillNumber', label: 'Refill #', required: false },
   { key: 'notes', label: 'Notes', required: false },
+
+  // --- Full pharmacy export (33 columns). Every entry below is optional:
+  // a pharmacy maps only the columns its own export actually contains. ---
+  { key: 'facilityName', label: 'Facility Name', required: false },
+  { key: 'dateWritten', label: 'Date Written', required: false },
+  { key: 'dateFilled', label: 'Date Filled', required: false },
+  { key: 'effectiveDate', label: 'Effective Date', required: false },
+  { key: 'refillDate', label: 'Refill Date', required: false },
+  { key: 'drugDescription', label: 'Dispensed Drug Description', required: false },
+  { key: 'drugGpi', label: 'Drug GPI', required: false },
+  { key: 'ndc', label: 'NDC', required: false },
+  { key: 'quantityDispensed', label: 'Quantity Dispensed', required: false },
+  { key: 'daysSupply', label: 'Days Supply', required: false },
+  { key: 'prescriptionLength', label: 'Prescription Length', required: false },
+  { key: 'refillsAuthorized', label: 'Refills Authorized', required: false },
+  { key: 'refillsRemaining', label: 'Refills Remaining', required: false },
+  { key: 'awpCost', label: 'AWP Cost', required: false },
+  { key: 'copayAmount', label: 'Copay Amount', required: false },
+  { key: 'deliveryMethod', label: 'Delivery Method Description', required: false },
+  { key: 'orderDescription', label: 'Order Description', required: false },
+  { key: 'prescriberFirstName', label: 'Prescriber First Name', required: false },
+  { key: 'prescriberLastName', label: 'Prescriber Last Name', required: false },
+  { key: 'prescriberAddress1', label: 'Prescriber Address1', required: false },
+  { key: 'prescriberCity', label: 'Prescriber City', required: false },
+  { key: 'prescriberState', label: 'Prescriber State', required: false },
 ]
 
 /** Address sub-field keys for multi-column address concatenation */
@@ -23,6 +48,36 @@ export const ADDRESS_SUBFIELDS = ['address1', 'address2', 'city', 'state', 'zip'
  * Patterns are checked case-insensitively via .includes()
  */
 const FUZZY_RULES = [
+  // --- Specific rules first: first match wins, so these must precede the
+  // --- general rules below or the general ones swallow the header.
+  // Prescriber block MUST stay above the address sub-field rules: without it,
+  // 'Prescriber Address1' matches the address1 rule and overwrites
+  // 'Ship To Address1' as the shipping address.
+  [/prescriber\s*last/i, 'prescriberLastName'],
+  [/prescriber\s*first/i, 'prescriberFirstName'],
+  [/prescriber\s*address/i, 'prescriberAddress1'],
+  [/prescriber\s*city/i, 'prescriberCity'],
+  [/prescriber\s*state/i, 'prescriberState'],
+  // Effective Date and Refill Date get their own fields. Date Written and
+  // Date Filled deliberately do NOT: two regression guards pin them to the
+  // canonical `date` field, and which date should be canonical is an open
+  // question for the operator. Both remain available for manual mapping.
+  [/effective\s*date/i, 'effectiveDate'],
+  [/refill\s*date/i, 'refillDate'],
+  // MUST precede the notes rule, which otherwise captures the drug description.
+  [/dispensed\s*drug|drug\s*description/i, 'drugDescription'],
+  [/drug\s*gpi|^gpi$/i, 'drugGpi'],
+  [/^ndc$|ndc\s*code|^ndc\b/i, 'ndc'],
+  // MUST precede the rxNumbers rule, whose pattern includes bare 'prescription'.
+  [/prescription\s*length/i, 'prescriptionLength'],
+  [/facility/i, 'facilityName'],
+  [/quantity/i, 'quantityDispensed'],
+  [/days\s*supply/i, 'daysSupply'],
+  [/refills\s*authorized|refills\s*auth/i, 'refillsAuthorized'],
+  [/refills\s*remaining|refills\s*left/i, 'refillsRemaining'],
+  [/awp/i, 'awpCost'],
+  [/copay/i, 'copayAmount'],
+  [/order\s*description/i, 'orderDescription'],
   // patientName
   [/customer\s*name|patient\s*name/i, 'patientName'],
   // phone
