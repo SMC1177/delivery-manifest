@@ -8,6 +8,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { requirePlatformAdmin } from './lib/admin-guard.js'
 import { maskSecrets, stripMaskMarkers } from './lib/settings-mask.js'
+import { validateTemplatePlaceholders } from './sms-templates.js'
 
 const ORG_EDITABLE_FIELDS = ['settings', 'enabledFields', 'name', 'logo']
 
@@ -68,6 +69,22 @@ export const updateOrgSettings = onCall(async (request) => {
     for (const key of Object.keys(updates)) {
       if (!ORG_EDITABLE_FIELDS.includes(key)) {
         throw new HttpsError('invalid-argument', `Key "${key}" is not allowed for target "org"`)
+      }
+    }
+
+    // Templates nest inside `settings`, so the key check above never sees their
+    // content. Validate placeholders HERE rather than leaving renderTemplate to
+    // throw at send time, which would surface the mistake while texting a patient.
+    const incomingTemplates = updates.settings?.templates
+    if (incomingTemplates && typeof incomingTemplates === 'object') {
+      for (const [templateKey, body] of Object.entries(incomingTemplates)) {
+        if (typeof body !== 'string') continue
+        try {
+          validateTemplatePlaceholders(body)
+        } catch (e) {
+          // Plain Error -> HttpsError, else the client sees an opaque 'internal'.
+          throw new HttpsError('invalid-argument', `Template "${templateKey}": ${e.message}`)
+        }
       }
     }
     const firestore = getFirestore()
