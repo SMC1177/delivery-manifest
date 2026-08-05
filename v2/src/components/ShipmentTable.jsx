@@ -176,6 +176,14 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
       {isFieldEnabled('carrier') && <td className="px-4 py-3 text-slate-600">{getCarrierName(s.carrier) || '\u2014'}</td>}
       <td className="px-4 py-3">
         <StatusBadge status={s.status} />
+        {s.status === 'exception' && (s.upsStatus || s.fedexStatus) ? (
+          <div
+            className="mt-1 text-xs text-red-700 whitespace-normal"
+            title={s.upsStatus || s.fedexStatus}
+          >
+            {s.upsStatus || s.fedexStatus}
+          </div>
+        ) : null}
       </td>
       {isFieldEnabled('redeliver') && (
         <td className="px-4 py-3">
@@ -243,6 +251,9 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
         </div>
         <StatusBadge status={s.status} />
       </div>
+      {s.status === 'exception' && (s.upsStatus || s.fedexStatus) ? (
+        <p className="text-sm text-red-700 mb-1">{s.upsStatus || s.fedexStatus}</p>
+      ) : null}
       {isFieldEnabled('address') && s.address && <p className="text-sm text-slate-600 mb-1">{s.address}</p>}
       {isFieldEnabled('phone') && s.phone && <p className="text-sm text-slate-600 mb-1">{s.phone}</p>}
       {isFieldEnabled('dob') && s.dob && <p className="text-sm text-slate-600 mb-1">DOB: {s.dob}</p>}

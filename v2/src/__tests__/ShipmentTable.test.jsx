@@ -148,3 +148,67 @@ describe('ShipmentTable', () => {
     expect(dashes.length).toBeGreaterThan(0)
   })
 })
+
+describe('ShipmentTable exception reason rendering', () => {
+  const renderShipments = (shipments) =>
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route path="/" element={<ShipmentTable shipments={shipments} />} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+  // Every shipment renders TWICE - once as a desktop table row, once as a
+  // mobile card - so text appears twice and the singular queries throw.
+  // toHaveLength(2) is deliberate: it proves BOTH views show the reason, which
+  // a toBeGreaterThan(0) check would not, and staff here work on tablets.
+
+  it('shows the upsStatus reason for an exception shipment', () => {
+    const { getAllByText } = renderShipments([
+      { id: 'exception-1', status: 'exception', carrier: 'ups', upsStatus: 'Receiver was not available', fedexStatus: null }
+    ])
+
+    expect(getAllByText('Receiver was not available')).toHaveLength(2)
+  })
+
+  it('shows the fedexStatus fallback reason for an exception shipment', () => {
+    const { getAllByText } = renderShipments([
+      { id: 'exception-2', status: 'exception', carrier: 'fedex', upsStatus: null, fedexStatus: 'Delivery exception' }
+    ])
+
+    expect(getAllByText('Delivery exception')).toHaveLength(2)
+  })
+
+  it('does not render a reason node when an exception shipment has neither reason field', () => {
+    const { getAllByText, queryAllByText, container } = renderShipments([
+      { id: 'exception-3', status: 'exception', carrier: 'ups', upsStatus: null, fedexStatus: null }
+    ])
+
+    // The badge still renders in both views...
+    expect(getAllByText(/exception/i).length).toBeGreaterThan(0)
+    // ...but no reason text does.
+    expect(queryAllByText('Receiver was not available')).toHaveLength(0)
+    expect(queryAllByText('Delivery exception')).toHaveLength(0)
+    // Bound to the class the component actually uses. The previous version of
+    // this line guessed at .exception-reason / [class*="reason"], which the
+    // implementation never emits, so it could not fail either way.
+    expect(container.querySelectorAll('.text-red-700')).toHaveLength(0)
+  })
+
+  it('does not show a populated upsStatus for a delivered shipment', () => {
+    const { queryAllByText } = renderShipments([
+      { id: 'delivered-1', status: 'delivered', carrier: 'ups', upsStatus: 'Receiver was not available' }
+    ])
+
+    expect(queryAllByText('Receiver was not available')).toHaveLength(0)
+  })
+
+  it('shows the reason even when carrier is null but upsStatus is populated', () => {
+    const { getAllByText } = renderShipments([
+      { id: 'exception-5', status: 'exception', carrier: null, upsStatus: 'Receiver was not available', fedexStatus: null }
+    ])
+
+    expect(getAllByText('Receiver was not available')).toHaveLength(2)
+  })
+})
