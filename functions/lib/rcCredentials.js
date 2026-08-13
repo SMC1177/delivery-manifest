@@ -1,5 +1,6 @@
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager'
 import { getFirestore } from 'firebase-admin/firestore'
+import { normalizePhone } from './phoneNormalize.js'
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'delivery-manifest-c3deb'
 
@@ -60,7 +61,17 @@ export async function getRingCentralCredsForOrg(orgSlug) {
     throw new Error(`RC creds secret for ${orgSlug} missing clientId/clientSecret/jwt`)
   }
 
-  return { clientId, clientSecret, jwt, server, fromNumber }
+  // RingCentral matches the sender against the numbers assigned to the
+  // authenticated user and stores them in E.164. A dashed value is rejected
+  // with MSG-245 "Cannot find the phone number which belongs to user".
+  let normalizedFrom
+  try {
+    normalizedFrom = normalizePhone(fromNumber)
+  } catch (e) {
+    throw new Error(`textMessaging settings for ${orgSlug} has an invalid fromNumber "${fromNumber}": ${e.message}`)
+  }
+
+  return { clientId, clientSecret, jwt, server, fromNumber: normalizedFrom }
 }
 
 // Internal: for tests to inject a fake client

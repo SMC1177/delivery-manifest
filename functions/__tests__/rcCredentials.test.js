@@ -74,6 +74,13 @@ describe('getRingCentralCredsForOrg', () => {
     await expect(getRingCentralCredsForOrg('acme')).rejects.toThrow(/missing clientId\/clientSecret\/jwt/)
   })
 
+  it('normalizes a dashed fromNumber to E.164', async () => {
+    _fakeDoc = { ringcentral: { server: 'https://platform.ringcentral.com', fromNumber: '404-551-2899' } }
+    _setClient(makeClient(JSON.stringify({ clientId: 'CID', clientSecret: 'CS', jwt: 'JWT' })))
+    const creds = await getRingCentralCredsForOrg('acme')
+    expect(creds.fromNumber).toBe('+14045512899')
+  })
+
   it('returns merged creds when both sources have data', async () => {
     _fakeDoc = { ringcentral: { server: 'https://platform.ringcentral.com', fromNumber: '+12815550100' } }
     _setClient(makeClient(JSON.stringify({ clientId: 'CID', clientSecret: 'CS', jwt: 'JWT' })))
