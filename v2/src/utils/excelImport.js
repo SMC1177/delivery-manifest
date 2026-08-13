@@ -263,7 +263,7 @@ export function applyMapping(rows, mapping) {
       trackingNumber: tracking,
       carrier: detectCarrierFromTracking(tracking),
       date: get('date') ? normalizeDate(get('date')) : '',
-      refillNumber: get('refillNumber') ? String(get('refillNumber')).trim() : '',
+      refillNumber: get('refillNumber') != null ? String(get('refillNumber')).trim() : '',
       notes: get('notes') ? String(get('notes')).trim() : '',
     }
   })
