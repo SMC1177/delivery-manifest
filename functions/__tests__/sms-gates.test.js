@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkSendPreconditions, checkOptInPolicy, GATE_ERRORS } from '../sms-gates.js'
+import { checkSendPreconditions, checkCallerMayText, checkOrgMayText, checkOptInPolicy, GATE_ERRORS } from '../sms-gates.js'
 
 const baseSettings = {
   enabled: true,
@@ -137,5 +137,73 @@ describe('checkOptInPolicy', () => {
       const r = checkOptInPolicy({ settings, contact: { optIn: false }, templateKey: 'delivered', consentAffirmed: true })
       expect(r.code).toBe(GATE_ERRORS.OPTED_OUT)
     })
+  })
+})
+
+describe('checkCallerMayText', () => {
+  it('fails when unauthenticated', () => {
+    const r = checkCallerMayText({ auth: null, memberRole: 'staff' })
+    expect(r.ok).toBe(false)
+    expect(r.code).toBe(GATE_ERRORS.UNAUTHENTICATED)
+  })
+
+  it('fails for a role that is neither admin nor staff', () => {
+    const r = checkCallerMayText({ auth: { uid: 'u1' }, memberRole: 'viewer' })
+    expect(r.ok).toBe(false)
+    expect(r.code).toBe(GATE_ERRORS.FORBIDDEN_ROLE)
+  })
+
+  it('passes for an authenticated staff member', () => {
+    expect(checkCallerMayText({ auth: { uid: 'u1' }, memberRole: 'staff' }).ok).toBe(true)
+  })
+
+  it('passes for an authenticated admin', () => {
+    expect(checkCallerMayText({ auth: { uid: 'u1' }, memberRole: 'admin' }).ok).toBe(true)
+  })
+})
+
+describe('checkOrgMayText', () => {
+  it('fails when messaging is disabled', () => {
+    const r = checkOrgMayText({ settings: { ...baseSettings, enabled: false }, org: baseOrg, shipment: baseShipment })
+    expect(r.ok).toBe(false)
+    expect(r.code).toBe(GATE_ERRORS.MESSAGING_DISABLED)
+  })
+
+  it('fails when the org has not enabled the phone field', () => {
+    const r = checkOrgMayText({ settings: baseSettings, org: { settings: { enabledFields: ['email'] } }, shipment: baseShipment })
+    expect(r.ok).toBe(false)
+    expect(r.code).toBe(GATE_ERRORS.PHONE_FIELD_DISABLED)
+  })
+
+  it('fails when credentials are not configured', () => {
+    const r = checkOrgMayText({ settings: { ...baseSettings, credsConfigured: false }, org: baseOrg, shipment: baseShipment })
+    expect(r.ok).toBe(false)
+    expect(r.code).toBe(GATE_ERRORS.CREDS_MISSING)
+  })
+
+  it('fails when the shipment carries no phone number', () => {
+    const r = checkOrgMayText({ settings: baseSettings, org: baseOrg, shipment: { ...baseShipment, phone: '   ' } })
+    expect(r.ok).toBe(false)
+    expect(r.code).toBe(GATE_ERRORS.SHIPMENT_NO_PHONE)
+  })
+
+  it('passes when the org is fully configured for this shipment', () => {
+    expect(checkOrgMayText({ settings: baseSettings, org: baseOrg, shipment: baseShipment }).ok).toBe(true)
+  })
+
+  // THE PROPERTY THE AUTOMATED PATH DEPENDS ON. A scheduled drain has no caller at all:
+  // there is no auth object and no member role to check. If checkOrgMayText ever reads
+  // either one, the queue path silently starts refusing every message.
+  it('never reads auth or memberRole — a denied caller changes nothing', () => {
+    const noCaller = checkOrgMayText({ settings: baseSettings, org: baseOrg, shipment: baseShipment })
+    const deniedCaller = checkOrgMayText({
+      auth: null,
+      memberRole: 'viewer',
+      settings: baseSettings,
+      org: baseOrg,
+      shipment: baseShipment,
+    })
+    expect(noCaller.ok).toBe(true)
+    expect(deniedCaller).toEqual(noCaller)
   })
 })

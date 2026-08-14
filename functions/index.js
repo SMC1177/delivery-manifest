@@ -1,11 +1,14 @@
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
-import { onDocumentCreated } from 'firebase-functions/v2/firestore'
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore'
 import { defineSecret } from 'firebase-functions/params'
 import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { mapFedExStatus } from './fedex-status.js'
 import { mapUpsStatus, deriveUpsStatusContext, isStaleDelivery } from './ups-status.js'
+import { onShipmentStatusChange } from './sms-status-trigger.js'
+import { drainQueue } from './sms-queue-drain.js'
+import { sendQueuedMessage } from './sms-queue-send.js'
 import { detectCarrier } from './carrier-detection.js'
 import { handleTrackAlertWebhook, subscribeTrackingNumbers } from './ups-track-alert.js'
 
@@ -916,3 +919,75 @@ export { backfillSearchFields } from './backfill-search-fields.js'
 
 // --- Org logo upload via Admin SDK (admin-only onCall) ---
 export { uploadOrgLogo } from './upload-org-logo.js'
+
+// --- SMS notification queue: the automated path ---
+//
+// onShipmentStatusChange already decides which writes notify a patient and is tested
+// against every transition. This wrapper only adapts the Firestore event shape to it.
+export const onShipmentStatusChanged = onDocumentUpdated(
+  { document: 'organizations/{orgSlug}/shipments/{shipmentId}' },
+  async (event) => {
+    const before = event.data?.before?.data()
+    const after = event.data?.after?.data()
+    if (!after) return
+
+    const { orgSlug, shipmentId } = event.params
+    try {
+      const result = await onShipmentStatusChange({ firestore, before, after, orgSlug, shipmentId })
+      if (result.enqueued) {
+        console.log(
+          `onShipmentStatusChanged: queued ${result.templateKey} for TN ${result.trackingNumber} (org=${orgSlug})`
+        )
+      }
+    } catch (err) {
+      // A failed enqueue must never block the shipment write that triggered it.
+      console.error(`onShipmentStatusChanged: enqueue failed for org=${orgSlug}, shipment=${shipmentId}`, err)
+    }
+  }
+)
+
+// Drains every org's queue on a schedule. Orgs are enumerated exactly as
+// scheduledFedExSync enumerates them, with the same per-org try/catch so one org's
+// failure cannot starve the rest.
+export const scheduledSmsQueueDrain = onSchedule(
+  {
+    schedule: '*/5 * * * *',
+    timeZone: 'America/Chicago',
+    timeoutSeconds: 300,
+  },
+  async () => {
+    const orgsSnap = await firestore.collection('organizations').get()
+    if (orgsSnap.empty) {
+      console.log('SMS queue drain: no organizations found, skipping.')
+      return
+    }
+
+    for (const orgDoc of orgsSnap.docs) {
+      const orgSlug = orgDoc.id
+      try {
+        // Skip an org whose messaging is off. Not an optimisation: the send gate would
+        // refuse every item, and each refusal costs the item an attempt until it
+        // dead-letters. A disabled org must leave its queue untouched, and this is also
+        // the switch that keeps rollout to one org at a time.
+        const settingsSnap = await firestore.doc(`organizations/${orgSlug}/settings/textMessaging`).get()
+        const settings = settingsSnap.exists ? settingsSnap.data() : null
+        if (!settings || settings.enabled !== true) continue
+
+        const summary = await drainQueue({
+          firestore,
+          orgSlug,
+          workerId: `sched-${orgSlug}`,
+          cap: settings.dailyCap || 250,
+          sendMessage: (item) => sendQueuedMessage({ firestore, orgSlug, item }),
+        })
+        if (summary.claimed > 0) {
+          console.log(
+            `SMS queue drain: org=${orgSlug} claimed=${summary.claimed} sent=${summary.sent} failed=${summary.failed} releasedForCap=${summary.releasedForCap}`
+          )
+        }
+      } catch (err) {
+        console.error(`SMS queue drain: org=${orgSlug} failed`, err)
+      }
+    }
+  }
+)

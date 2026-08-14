@@ -34,9 +34,19 @@ function fail(code) {
   return { ok: false, code, message: USER_MESSAGES[code] }
 }
 
-export function checkSendPreconditions({ auth, memberRole, settings, org, shipment }) {
+// May THIS CALLER send a text? Only a signed-in admin or staff member may press the
+// button. The automated queue path has no caller and never asks this question.
+export function checkCallerMayText({ auth, memberRole }) {
   if (!auth || !auth.uid) return fail(GATE_ERRORS.UNAUTHENTICATED)
   if (memberRole !== 'admin' && memberRole !== 'staff') return fail(GATE_ERRORS.FORBIDDEN_ROLE)
+
+  return { ok: true }
+}
+
+// May THIS ORG text THIS SHIPMENT? Reads nothing about the caller, deliberately: the
+// scheduled drain calls this alone, so a stray auth or memberRole read here would
+// silently refuse every automated message.
+export function checkOrgMayText({ settings, org, shipment }) {
   if (!settings || settings.enabled !== true) return fail(GATE_ERRORS.MESSAGING_DISABLED)
 
   const enabledFields = org?.settings?.enabledFields || []
@@ -50,6 +60,15 @@ export function checkSendPreconditions({ auth, memberRole, settings, org, shipme
   if (!shipment?.phone || String(shipment.phone).trim() === '') return fail(GATE_ERRORS.SHIPMENT_NO_PHONE)
 
   return { ok: true }
+}
+
+// The manual path: a person pressed a button, so both questions apply. Caller first,
+// preserving the original first-failure order exactly.
+export function checkSendPreconditions({ auth, memberRole, settings, org, shipment }) {
+  const caller = checkCallerMayText({ auth, memberRole })
+  if (!caller.ok) return caller
+
+  return checkOrgMayText({ settings, org, shipment })
 }
 
 export function checkOptInPolicy({ settings, contact, templateKey, consentAffirmed }) {
