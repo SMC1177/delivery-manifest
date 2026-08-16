@@ -5,6 +5,7 @@ import StatusBadge from './StatusBadge'
 import { getTrackingUrl, getCarrierName } from '../lib/carriers'
 import OptInDot from './OptInDot'
 import SendTextModal from './SendTextModal'
+import ShipmentModal from './ShipmentModal'
 import { useTextMessagingSettings } from '../hooks/useTextMessagingSettings'
 
 export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusChange, readOnly, selectedIds, onSelectionChange, queueStates }) {
@@ -12,6 +13,7 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
   const { isFieldEnabled } = useOrgSettings(slug)
   const [expandedGroups, setExpandedGroups] = useState(new Set())
   const [smsModalShipment, setSmsModalShipment] = useState(null)
+  const [settingsModalShipment, setSettingsModalShipment] = useState(null)
   const { data: smsSettings } = useTextMessagingSettings(slug)
   const smsEnabled = smsSettings?.enabled === true
 
@@ -129,11 +131,9 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
           <OptInDot slug={slug} phone={s.phone} enabled={smsEnabled} />
           <button
             type="button"
-            onClick={() => smsEnabled && s.phone && setSmsModalShipment(s)}
-            className={smsEnabled && s.phone
-              ? 'text-blue-700 hover:underline cursor-pointer text-left'
-              : 'text-slate-900 cursor-default text-left'}
-            title={smsEnabled && s.phone ? 'Click to send text message' : ''}
+            onClick={(e) => { e.stopPropagation(); setSettingsModalShipment(s) }}
+            className="text-blue-700 hover:underline cursor-pointer text-left"
+            title="Click to open patient settings"
           >
             {s.patientName}
           </button>
@@ -244,11 +244,9 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
               <OptInDot slug={slug} phone={s.phone} enabled={smsEnabled} />
               <button
                 type="button"
-                onClick={() => smsEnabled && s.phone && setSmsModalShipment(s)}
-                className={smsEnabled && s.phone
-                  ? 'text-blue-700 hover:underline cursor-pointer text-left'
-                  : 'text-slate-900 cursor-default text-left'}
-                title={smsEnabled && s.phone ? 'Click to send text message' : ''}
+                onClick={(e) => { e.stopPropagation(); setSettingsModalShipment(s) }}
+                className="text-blue-700 hover:underline cursor-pointer text-left"
+                title="Click to open patient settings"
               >
                 {s.patientName}
               </button>
@@ -422,6 +420,14 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
           slug={slug}
           shipment={smsModalShipment}
           onClose={() => setSmsModalShipment(null)}
+        />
+      )}
+      {settingsModalShipment && (
+        <ShipmentModal
+          isOpen
+          onClose={() => setSettingsModalShipment(null)}
+          onSubmit={onEdit}
+          shipment={settingsModalShipment}
         />
       )}
     </>

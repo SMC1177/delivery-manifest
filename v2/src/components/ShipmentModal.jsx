@@ -1,7 +1,24 @@
 import { useState, useEffect } from 'react'
+import { doc, setDoc } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { useOrgSettings } from '../hooks/useOrgSettings'
+import { useSmsContact } from '../hooks/useSmsContact'
+import { db } from '../lib/firebase'
 import { CARRIER_OPTIONS, getCarrierName } from '../lib/carriers'
+
+const LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'fr', label: 'French' },
+]
+
+const SMS_STATUS_LABELS = {
+  unknown: 'No opt-in recorded yet',
+  pending: 'Invitation sent — awaiting reply',
+  opted_in: 'Opted in to text messages',
+  opted_out: 'Opted out of text messages',
+  no_phone: 'No valid phone number entered',
+}
 
 const emptyForm = {
   patientName: '',
@@ -13,6 +30,7 @@ const emptyForm = {
   carrier: 'ups',
   status: 'pending',
   notes: '',
+  language: 'en',
 }
 
 export default function ShipmentModal({ isOpen, onClose, onSubmit, shipment }) {
@@ -20,7 +38,9 @@ export default function ShipmentModal({ isOpen, onClose, onSubmit, shipment }) {
   const { isFieldEnabled } = useOrgSettings(orgSlug)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [languageSaving, setLanguageSaving] = useState(false)
   const isEdit = !!shipment
+  const { loading: smsLoading, derivedState, normalizedPhone } = useSmsContact(orgSlug, form.phone)
 
   useEffect(() => {
     if (shipment) {
@@ -34,6 +54,7 @@ export default function ShipmentModal({ isOpen, onClose, onSubmit, shipment }) {
         carrier: shipment.carrier || 'ups',
         status: shipment.status || 'pending',
         notes: shipment.notes || '',
+        language: shipment.language || 'en',
       })
     } else {
       setForm(emptyForm)
@@ -64,6 +85,23 @@ export default function ShipmentModal({ isOpen, onClose, onSubmit, shipment }) {
 
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
+  }
+
+  async function saveLanguage() {
+    if (!normalizedPhone) {
+      window.alert('Enter a valid phone number before saving the language.')
+      return
+    }
+    setLanguageSaving(true)
+    try {
+      const ref = doc(db, 'organizations', orgSlug, 'smsContacts', normalizedPhone)
+      await setDoc(ref, { language: form.language }, { merge: true })
+    } catch (err) {
+      console.error(err)
+      window.alert(`Save failed: ${err.message || 'Unknown error'}`)
+    } finally {
+      setLanguageSaving(false)
+    }
   }
 
   return (
@@ -199,6 +237,42 @@ export default function ShipmentModal({ isOpen, onClose, onSubmit, shipment }) {
               />
             </div>
           )}
+
+          <div className="border-t border-slate-200 pt-4 space-y-4">
+            <h4 className="text-sm font-semibold text-slate-900">Text Messaging</h4>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Preferred Language</label>
+              <select
+                name="language"
+                value={form.language}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {LANGUAGES.map((lang) => (
+                  <option key={lang.value} value={lang.value}>
+                    {lang.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Text Messaging Status</label>
+              <p className="text-sm text-slate-600">
+                {smsLoading ? 'Checking opt-in status…' : SMS_STATUS_LABELS[derivedState] || 'Unknown'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={saveLanguage}
+              disabled={languageSaving}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {languageSaving ? 'Saving…' : 'Save Language'}
+            </button>
+          </div>
 
           <div className="flex justify-end gap-3 pt-2">
             <button
