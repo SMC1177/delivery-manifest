@@ -46,6 +46,15 @@ function makeMockFirestore() {
   return { firestore, notifications }
 }
 
+/**
+ * Queue items live at .../settings/textMessaging/queue/{key}; the ledger claim
+ * enqueue also writes lives at .../settings/textMessaging/ledger/{key}. Every
+ * queue VIEW must count only queue-path docs, so filter by path not shape.
+ */
+const queueDocs = (notifications) => [...notifications.entries()]
+  .filter(([path]) => path.includes('settings/textMessaging/queue/'))
+  .map(([, d]) => d)
+
 const TRACKING = '1Z999AA10123456784'
 
 describe('enqueue', () => {
@@ -56,7 +65,7 @@ describe('enqueue', () => {
   it('stores the STRING form when trackingNumber arrives as a NUMBER', async () => {
     const { firestore, notifications } = makeMockFirestore()
     await enqueue({ firestore, orgSlug: ORG, trackingNumber: 426315840269, templateKey: TPL })
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.trackingNumber).toBe(TRACK)
     expect(typeof item.trackingNumber).toBe('string')
   })
@@ -75,7 +84,7 @@ describe('enqueue', () => {
     const { firestore, notifications } = makeMockFirestore()
     await enqueue({ firestore, orgSlug: ORG, trackingNumber: 426315840269, templateKey: TPL })
     await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACK, templateKey: TPL })
-    expect(notifications.size).toBe(1)
+    expect(queueDocs(notifications).length).toBe(1)
   })
 
   it('throws when orgSlug is missing rather than defaulting to a shared path', async () => {
@@ -91,8 +100,8 @@ describe('enqueue', () => {
   it('writes the queue item the drain needs: pending, zero attempts, and identity', async () => {
     const { firestore, notifications } = makeMockFirestore()
     await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACKING, templateKey: TPL })
-    expect(notifications.size).toBe(1)
-    const [item] = [...notifications.values()]
+    expect(queueDocs(notifications).length).toBe(1)
+    const [item] = queueDocs(notifications)
     expect(item.status).toBe('pending')
     expect(item.attempts).toBe(0)
     expect(item.orgSlug).toBe(ORG)
@@ -105,8 +114,8 @@ describe('enqueue', () => {
     const { firestore, notifications } = makeMockFirestore()
     await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACKING, templateKey: TPL })
     await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACKING.toLowerCase(), templateKey: TPL })
-    expect(notifications.size).toBe(1)
-    const [item] = [...notifications.values()]
+    expect(queueDocs(notifications).length).toBe(1)
+    const [item] = queueDocs(notifications)
     expect(item.trackingNumber).toBe(TRACKING)
   })
 
@@ -114,28 +123,36 @@ describe('enqueue', () => {
     const { firestore, notifications } = makeMockFirestore()
     const shipmentIds = ['ship_1', 'ship_2', 'ship_3', 'ship_4', 'ship_5']
     const trackingNumber = '1Z999CC30345678606'
+    // The ledger claim lets enqueue through once per 90-day window; advance the
+    // clock past it between enqueues so each re-claim merges into the same item.
+    let now = new Date('2026-08-13T12:00:00.000Z')
 
     for (const shipmentId of shipmentIds) {
-      await enqueue({ firestore, orgSlug: ORG, trackingNumber, templateKey: TPL, shipmentIds: [shipmentId] })
+      await enqueue({ firestore, orgSlug: ORG, trackingNumber, templateKey: TPL, shipmentIds: [shipmentId], now })
+      now = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 91)
     }
 
-    expect(notifications.size).toBe(1)
-    const [item] = [...notifications.values()]
+    expect(queueDocs(notifications).length).toBe(1)
+    const [item] = queueDocs(notifications)
     expect(item.shipmentIds).toEqual(shipmentIds)
   })
 
   it('does not duplicate a shipment id that is enqueued twice', async () => {
     const { firestore, notifications } = makeMockFirestore()
-    await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACKING, templateKey: TPL, shipmentIds: ['ship_1'] })
-    await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACKING, templateKey: TPL, shipmentIds: ['ship_1', 'ship_2'] })
-    const [item] = [...notifications.values()]
+    const first = new Date('2026-08-13T12:00:00.000Z')
+    // The second enqueue lands after the first claim's 90-day window, so enqueue
+    // re-claims and merges; the merged Set must not duplicate ship_1.
+    const later = new Date(first.getTime() + 1000 * 60 * 60 * 24 * 91)
+    await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACKING, templateKey: TPL, shipmentIds: ['ship_1'], now: first })
+    await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACKING, templateKey: TPL, shipmentIds: ['ship_1', 'ship_2'], now: later })
+    const [item] = queueDocs(notifications)
     expect(item.shipmentIds).toEqual(['ship_1', 'ship_2'])
   })
 
   it('defaults shipmentIds to an empty array when none are supplied', async () => {
     const { firestore, notifications } = makeMockFirestore()
     await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACKING, templateKey: TPL })
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.shipmentIds).toEqual([])
   })
 
@@ -143,7 +160,7 @@ describe('enqueue', () => {
     const { firestore, notifications } = makeMockFirestore()
     await enqueue({ firestore, orgSlug: 'acme', trackingNumber: TRACKING, templateKey: TPL })
     await enqueue({ firestore, orgSlug: 'other', trackingNumber: TRACKING, templateKey: TPL })
-    expect(notifications.size).toBe(2)
+    expect(queueDocs(notifications).length).toBe(2)
     for (const path of notifications.keys()) {
       expect(path.startsWith('organizations/')).toBe(true)
     }
@@ -153,7 +170,7 @@ describe('enqueue', () => {
     const { firestore, notifications } = makeMockFirestore()
     await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACKING, templateKey: 'shipped' })
     await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACKING, templateKey: 'delivered' })
-    expect(notifications.size).toBe(2)
+    expect(queueDocs(notifications).length).toBe(2)
   })
 })
 
@@ -233,7 +250,7 @@ describe('claimBatch', () => {
     const { firestore, notifications } = makeQueryableFirestore()
     await seed(firestore, ['T1'])
     await claimBatch({ firestore, orgSlug: ORG, limit: 10, now: NOW, workerId: 'w1' })
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.status).toBe('sending')
     expect(item.leaseOwner).toBe('w1')
     expect(Date.parse(item.leaseExpiresAt)).toBeGreaterThan(NOW.getTime())
@@ -243,7 +260,7 @@ describe('claimBatch', () => {
     const { firestore, notifications } = makeQueryableFirestore()
     await seed(firestore, ['T1'])
     await claimBatch({ firestore, orgSlug: ORG, limit: 10, now: NOW, workerId: 'w1' })
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.attempts).toBe(0)
   })
 
@@ -322,7 +339,7 @@ describe('complete and fail', () => {
     const { firestore, notifications } = await seedClaimed()
     const result = await complete({ firestore, ...IDENT, workerId: 'w1', now: NOW })
     expect(result.completed).toBe(true)
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.status).toBe('sent')
     expect(item.leaseOwner).toBeNull()
     expect(item.leaseExpiresAt).toBeNull()
@@ -345,7 +362,7 @@ describe('complete and fail', () => {
     const result = await complete({ firestore, ...IDENT, workerId: 'w1', now: later })
 
     expect(result.completed).toBe(false)
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.status).toBe('sending')
     expect(item.leaseOwner).toBe('w2')
   })
@@ -360,7 +377,7 @@ describe('complete and fail', () => {
       error: 'RingCentral SMS failed (500): upstream unavailable',
     })
     expect(result.failed).toBe(true)
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.status).toBe('pending')
     expect(item.attempts).toBe(1)
     expect(item.lastError).toMatch(/upstream unavailable/)
@@ -371,7 +388,7 @@ describe('complete and fail', () => {
     const { firestore, notifications } = await seedClaimed()
     await fail({ firestore, ...IDENT, workerId: 'w1', now: NOW, error: 'boom' })
 
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(Date.parse(item.nextAttemptAt)).toBeGreaterThan(NOW.getTime())
 
     const immediate = await claimBatch({
@@ -403,7 +420,7 @@ describe('complete and fail', () => {
     const result = await fail({ firestore, ...IDENT, workerId: 'w1', now: later, error: 'stale' })
 
     expect(result.failed).toBe(false)
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.attempts).toBe(0)
     expect(item.leaseOwner).toBe('w2')
   })
@@ -419,7 +436,7 @@ describe('complete and fail', () => {
       maxAttempts: 1,
     })
 
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.status).toBe('dead')
     expect(item.lastError).toMatch(/invalid recipient/)
 
@@ -467,7 +484,7 @@ describe('release', () => {
     const { firestore, notifications } = await seedClaimed()
     const result = await release({ firestore, ...IDENT, workerId: 'w1' })
     expect(result.released).toBe(true)
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.status).toBe('pending')
     expect(item.leaseOwner).toBeNull()
     expect(item.leaseExpiresAt).toBeNull()
@@ -477,7 +494,7 @@ describe('release', () => {
     const { firestore, notifications } = await seedClaimed()
     await release({ firestore, ...IDENT, workerId: 'w1' })
 
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.attempts).toBe(0)
     expect(item.lastError).toBeUndefined()
 
@@ -505,7 +522,7 @@ describe('release', () => {
     await claimBatch({ firestore, orgSlug: ORG, limit: 10, now: NOW, workerId: 'w1' })
     await release({ firestore, ...IDENT, workerId: 'w1' })
 
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.shipmentIds).toEqual(['s_1', 's_2', 's_3'])
   })
 
@@ -517,7 +534,7 @@ describe('release', () => {
     const result = await release({ firestore, ...IDENT, workerId: 'w1' })
 
     expect(result.released).toBe(false)
-    const [item] = [...notifications.values()]
+    const [item] = queueDocs(notifications)
     expect(item.status).toBe('sending')
     expect(item.leaseOwner).toBe('w2')
   })
@@ -540,7 +557,7 @@ describe('drainQueue', () => {
   const TPL = 'delivered'
   const NOW = new Date('2026-08-13T12:00:00.000Z')
 
-  const queueItems = (notifications) => [...notifications.values()].filter((d) => d.templateKey)
+  const queueItems = (notifications) => [...notifications.entries()].filter(([path]) => path.includes('settings/textMessaging/queue/')).map(([, d]) => d)
 
   async function seed(firestore, trackingNumbers) {
     for (const trackingNumber of trackingNumbers) {
@@ -784,5 +801,32 @@ describe('drainQueue default limit', () => {
 
     expect(result.claimed).toBe(25)
     expect(sendMessage).toHaveBeenCalledTimes(25)
+  })
+})
+describe('enqueue ledger claim', () => {
+  const ORG = 'acme'
+  const TRACK = '426315840269'
+  const TPL = 'delivered'
+  const NOW = new Date('2026-08-13T12:00:00.000Z')
+
+  it('claims the ledger and returns enqueued:true on the first enqueue', async () => {
+    const { firestore } = makeQueryableFirestore()
+    const result = await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACK, templateKey: TPL, now: NOW })
+    expect(result).toEqual({ enqueued: true, trackingNumber: TRACK })
+  })
+
+  it('returns enqueued:false with reason already_notified for a second enqueue of the same tracking+template', async () => {
+    const { firestore } = makeQueryableFirestore()
+    await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACK, templateKey: TPL, now: NOW })
+    const second = await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACK, templateKey: TPL, now: NOW })
+    expect(second).toEqual({ enqueued: false, reason: 'already_notified', trackingNumber: TRACK })
+  })
+
+  it('re-claims after the ledger claim expires', async () => {
+    const { firestore } = makeQueryableFirestore()
+    await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACK, templateKey: TPL, now: NOW })
+    const later = new Date(NOW.getTime() + 1000 * 60 * 60 * 24 * 91)
+    const result = await enqueue({ firestore, orgSlug: ORG, trackingNumber: TRACK, templateKey: TPL, now: later })
+    expect(result).toEqual({ enqueued: true, trackingNumber: TRACK })
   })
 })

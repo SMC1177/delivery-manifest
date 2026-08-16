@@ -94,8 +94,8 @@ describe('buildBatchedVars', () => {
 })
 
 describe('BATCHED_TEMPLATE_VARS', () => {
-  it('adds exactly one name to the existing allowlist', () => {
-    expect(BATCHED_TEMPLATE_VARS).toEqual([...TEMPLATE_VARS, 'prescriptionCount'])
+  it('matches the template allowlist exactly — prescriptionCount is now in TEMPLATE_VARS', () => {
+    expect(BATCHED_TEMPLATE_VARS).toEqual(TEMPLATE_VARS)
   })
 
   it('contains no variable whose name suggests a clinical field', () => {

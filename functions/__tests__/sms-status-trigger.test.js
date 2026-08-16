@@ -9,6 +9,7 @@ import { onShipmentStatusChange, STATUS_TEMPLATE_KEYS } from '../sms-status-trig
  */
 function makeMockFirestore() {
   const notifications = new Map()
+  const ledger = new Map()
   const refs = new Map()
 
   function refFor(path) {
@@ -18,19 +19,28 @@ function makeMockFirestore() {
     return refs.get(path)
   }
 
+  // enqueue writes BOTH the ledger claim (claimSend) and the queue item, so the
+  // tests' queue views (notifications.size, [...notifications.values()]) must
+  // count only queue documents. Partition by path at write time; reads consult
+  // both maps so the idempotency claim round-trip in claimSend still works.
+  const isQueuePath = (path) => path.includes('settings/textMessaging/queue/')
+
   const firestore = {
     doc: vi.fn((path) => refFor(path)),
     runTransaction: vi.fn(async (fn) =>
       fn({
         get: vi.fn(async (ref) => {
-          const entry = notifications.get(ref._path)
+          const entry = notifications.get(ref._path) ?? ledger.get(ref._path)
           return { exists: entry !== undefined, data: () => entry ?? {} }
         }),
-        set: vi.fn((ref, data) => { notifications.set(ref._path, data) }),
+        set: vi.fn((ref, data) => {
+          const map = isQueuePath(ref._path) ? notifications : ledger
+          map.set(ref._path, data)
+        }),
       })
     ),
   }
-  return { firestore, notifications }
+  return { firestore, notifications, ledger }
 }
 
 const ORG = 'acme'

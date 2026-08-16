@@ -48,13 +48,17 @@ export default function SendTextModal({ slug, shipment, onClose }) {
     setError(null)
     try {
       const fn = httpsCallable(getFunctions(), 'sendSms')
-      await fn({
+      const result = (await fn({
         orgSlug: slug,
         shipmentId: shipment.id,
         templateKey: effectiveTemplateKey,
         consentAffirmed: consent,
-      })
-      setSentMessage('Sent.')
+      })).data
+      if (result?.status === 'already_notified') {
+        setSentMessage(`Already texted for this tracking number${result.trackingNumber ? `: ${result.trackingNumber}` : ''}.`)
+      } else {
+        setSentMessage('Text queued.')
+      }
     } catch (e) {
       setError(e?.message || 'Send failed')
     } finally {

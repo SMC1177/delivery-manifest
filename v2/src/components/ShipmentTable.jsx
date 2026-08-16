@@ -7,7 +7,7 @@ import OptInDot from './OptInDot'
 import SendTextModal from './SendTextModal'
 import { useTextMessagingSettings } from '../hooks/useTextMessagingSettings'
 
-export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusChange, readOnly, selectedIds, onSelectionChange }) {
+export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusChange, readOnly, selectedIds, onSelectionChange, queueStates }) {
   const { slug } = useParams()
   const { isFieldEnabled } = useOrgSettings(slug)
   const [expandedGroups, setExpandedGroups] = useState(new Set())
@@ -182,6 +182,13 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
             title={s.upsStatus || s.fedexStatus}
           >
             {s.upsStatus || s.fedexStatus}
+          </div>
+        ) : null}
+        {queueStates && queueStates[s.trackingNumber] ? (
+          <div className="mt-1">
+            <span className="inline-flex items-center px-1.5 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">
+              {queueStates[s.trackingNumber]}
+            </span>
           </div>
         ) : null}
       </td>

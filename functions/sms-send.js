@@ -1,11 +1,8 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
-import { normalizePhone, maskPhone } from './lib/phoneNormalize.js'
-import { renderTemplate, validateOptInInvite } from './sms-templates.js'
-import { checkAndIncrementRateLimit } from './sms-rate-limit.js'
-import { checkSendPreconditions, checkOptInPolicy, GATE_ERRORS, userMessageFor } from './sms-gates.js'
-import { sendRingCentralSms } from './ringcentral-sms.js'
-import { getRingCentralCredsForOrg } from './lib/rcCredentials.js'
+import { normalizePhone } from './lib/phoneNormalize.js'
+import { checkSendPreconditions, checkOptInPolicy, userMessageFor } from './sms-gates.js'
+import { enqueue } from './lib/smsQueue.js'
 
 export const sendSms = onCall(async (request) => {
   const firestore = getFirestore()
@@ -40,7 +37,15 @@ export const sendSms = onCall(async (request) => {
     throw new HttpsError('failed-precondition', userMessageFor(pre.code), { code: pre.code })
   }
 
-  // Normalize phone
+  // No direct-send path: every text is queued, and the queue is keyed by the
+  // shipment's tracking number, so the ledger claim (which lives inside
+  // enqueue) is what makes a repeat request a no-op.
+  const trackingNumber = shipment.trackingNumber
+  if (!trackingNumber || String(trackingNumber).trim() === '') {
+    throw new HttpsError('invalid-argument', 'cannot queue a text for a shipment without a tracking number')
+  }
+
+  // Normalize phone (the opt-in contact is keyed by the normalized number)
   let phone
   try {
     phone = normalizePhone(shipment.phone)
@@ -53,7 +58,7 @@ export const sendSms = onCall(async (request) => {
   const contactSnap = await contactRef.get()
   const contact = contactSnap.exists ? contactSnap.data() : null
 
-  // Opt-in policy
+  // Opt-in policy (fast-fail at the button; the drain re-checks at send time)
   const policy = checkOptInPolicy({
     settings,
     contact,
@@ -64,101 +69,45 @@ export const sendSms = onCall(async (request) => {
     throw new HttpsError('failed-precondition', userMessageFor(policy.code), { code: policy.code })
   }
 
-  // Resolve template body
-  const template = settings.templates?.[templateKey]
-  if (!template) {
-    throw new HttpsError('failed-precondition', `Unknown template: ${templateKey}`)
-  }
-  if (templateKey === 'optInInvite') {
-    try { validateOptInInvite(template) }
-    catch (e) { throw new HttpsError('failed-precondition', e.message) }
-  }
-
-  // Render
-  let body
+  // Claim and enqueue. The ledger claim lives inside enqueue(); the drain owns
+  // the daily cap, the template render, the provider call, and the send-side
+  // contact bookkeeping.
+  let outcome
   try {
-    body = renderTemplate(template, {
-      pharmacyName: org.name || orgSlug,
-      patientName: shipment.patientName || '',
-      pharmacyPhone: org.contactPhone || '',
+    outcome = await enqueue({
+      firestore,
+      orgSlug,
+      trackingNumber,
+      templateKey,
+      shipmentIds: [shipmentId],
+      now: new Date(),
     })
   } catch (e) {
-    throw new HttpsError('failed-precondition', e.message)
-  }
-
-  // Rate limit (atomic increment — only consumes a slot if it sends)
-  const cap = settings.dailyCap || 250
-  const limit = await checkAndIncrementRateLimit({ firestore, orgSlug, cap })
-  if (!limit.allowed) {
     await firestore.collection(`organizations/${orgSlug}/auditLog`).add({
-      action: 'sms.rate_limit_hit',
+      action: 'sms.enqueue_failed',
       targetId: orgSlug,
-      details: { daily: limit.current, cap: limit.cap },
+      details: { shipmentId, templateKey, trackingNumber, error: e.message },
       userId: request.auth.uid,
       timestamp: FieldValue.serverTimestamp(),
     })
-    throw new HttpsError('resource-exhausted', userMessageFor(GATE_ERRORS.RATE_LIMITED))
-  }
-
-  // SEND
-  let creds
-  try {
-    creds = await getRingCentralCredsForOrg(orgSlug)
-  } catch (e) {
-    throw new HttpsError('failed-precondition', `Could not load RingCentral credentials: ${e.message}`)
-  }
-
-  let messageId
-  try {
-    const result = await sendRingCentralSms({
-      creds,
-      from: creds.fromNumber,
-      to: phone,
-      text: body,
-    })
-    messageId = result.messageId
-  } catch (e) {
-    await contactRef.set(
-      { phone, lastError: e.message, lastErrorAt: FieldValue.serverTimestamp() },
-      { merge: true },
-    )
-    await firestore.collection(`organizations/${orgSlug}/auditLog`).add({
-      action: 'sms.send_failed',
-      targetId: maskPhone(phone),
-      details: { shipmentId, templateKey, error: e.message },
-      userId: request.auth.uid,
-      timestamp: FieldValue.serverTimestamp(),
-    })
-    console.error('sendSms: RingCentral send failed', { orgSlug, templateKey, error: e.message })
+    console.error('sendSms: enqueue failed', { orgSlug, templateKey, trackingNumber, error: e.message })
     throw new HttpsError('internal', e.message)
   }
 
-  // Update contact
-  const contactUpdate = {
-    phone,
-    patientName: shipment.patientName || contact?.patientName || null,
-    lastContactedAt: FieldValue.serverTimestamp(),
-    totalSent: FieldValue.increment(1),
-    lastError: null,
+  if (!outcome.enqueued) {
+    return { ok: true, status: 'already_notified', trackingNumber }
   }
-  if (templateKey === 'optInInvite') {
-    contactUpdate.invitedAt = FieldValue.serverTimestamp()
-    if (!contact) contactUpdate.optIn = null
-  } else if (policy.autoCreateOptedIn) {
-    contactUpdate.optIn = true
-    contactUpdate.respondedAt = FieldValue.serverTimestamp()
-  }
-  await contactRef.set(contactUpdate, { merge: true })
 
-  // Audit log
-  const action = templateKey === 'optInInvite' ? 'sms.invite_sent' : 'sms.message_sent'
+  // Audit the request at enqueue time; the send-completion audit and contact
+  // updates are the drain's job once the message actually goes out.
+  const action = templateKey === 'optInInvite' ? 'sms.invite_queued' : 'sms.message_queued'
   await firestore.collection(`organizations/${orgSlug}/auditLog`).add({
     action,
-    targetId: maskPhone(phone),
-    details: { shipmentId, templateKey, ringcentralMessageId: messageId },
+    targetId: orgSlug,
+    details: { shipmentId, templateKey, trackingNumber },
     userId: request.auth.uid,
     timestamp: FieldValue.serverTimestamp(),
   })
 
-  return { ok: true, messageId }
+  return { ok: true, status: 'queued', trackingNumber }
 })

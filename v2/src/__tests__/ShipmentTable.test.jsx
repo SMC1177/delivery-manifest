@@ -149,15 +149,16 @@ describe('ShipmentTable', () => {
   })
 })
 
+const renderShipments = (shipments, props = {}) =>
+  render(
+    <MemoryRouter>
+      <Routes>
+        <Route path="/" element={<ShipmentTable shipments={shipments} {...props} />} />
+      </Routes>
+    </MemoryRouter>
+  )
+
 describe('ShipmentTable exception reason rendering', () => {
-  const renderShipments = (shipments) =>
-    render(
-      <MemoryRouter>
-        <Routes>
-          <Route path="/" element={<ShipmentTable shipments={shipments} />} />
-        </Routes>
-      </MemoryRouter>
-    )
 
   // Every shipment renders TWICE - once as a desktop table row, once as a
   // mobile card - so text appears twice and the singular queries throw.
@@ -210,5 +211,28 @@ describe('ShipmentTable exception reason rendering', () => {
     ])
 
     expect(getAllByText('Receiver was not available')).toHaveLength(2)
+  })
+})
+
+describe('queue state badges', () => {
+  it('renders a queue-state badge for a tracking number with state', () => {
+    const { getByText } = renderShipments([
+      { id: 'q1', status: 'shipped', trackingNumber: 'T1', carrier: 'ups' },
+    ], { queueStates: { T1: 'Queued' } })
+    expect(getByText('Queued')).toBeDefined()
+  })
+
+  it('renders the operator vocabulary, not the raw status', () => {
+    const { getByText } = renderShipments([
+      { id: 'q2', status: 'shipped', trackingNumber: 'T2', carrier: 'ups' },
+    ], { queueStates: { T2: 'Not sent' } })
+    expect(getByText('Not sent')).toBeDefined()
+  })
+
+  it('renders nothing extra when a tracking number has no queue state', () => {
+    const { queryByText } = renderShipments([
+      { id: 'q3', status: 'shipped', trackingNumber: 'T3', carrier: 'ups' },
+    ])
+    expect(queryByText(/Queued|Sending|Sent|Retrying|Not sent/)).toBeNull()
   })
 })

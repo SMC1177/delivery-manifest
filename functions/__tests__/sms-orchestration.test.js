@@ -26,8 +26,11 @@ function makeFirestore({ docs = {} } = {}) {
     doc: vi.fn(docRef),
     collection: vi.fn(colRef),
     runTransaction: vi.fn(async (fn) => fn({
-      get: vi.fn(async (ref) => ({ exists: false, data: () => null })),
-      set: vi.fn(),
+      get: vi.fn(async (ref) => ({ exists: !!docs[ref.path], data: () => docs[ref.path] })),
+      set: vi.fn(async (ref, data, opts) => {
+        if (opts?.merge) docs[ref.path] = { ...(docs[ref.path] || {}), ...data }
+        else docs[ref.path] = data
+      }),
     })),
     _docs: docs,
     _collections: collections,
@@ -89,17 +92,16 @@ async function loadSendSms() {
 }
 
 describe('sendSms orchestration — double_opt_in', () => {
-  it('first send to a new patient must be the opt-in invite', async () => {
+  it('first opt-in invite to a new patient is queued, never sent directly', async () => {
     const docs = {
       'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
       'organizations/acme/settings/textMessaging': baseSettings,
       'organizations/acme/members/u1': { role: 'staff' },
-      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John', trackingNumber: '1Z999AA10123456784' },
     }
-    globalThis.__testFirestore = makeFirestore({ docs })
+    const fs = makeFirestore({ docs })
+    globalThis.__testFirestore = fs
     global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 3600 }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'rc-msg-1' }) })
 
     const sendSms = await loadSendSms()
     const result = await sendSms({
@@ -107,10 +109,11 @@ describe('sendSms orchestration — double_opt_in', () => {
       data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'optInInvite' },
     })
 
-    expect(result).toEqual({ ok: true, messageId: 'rc-msg-1' })
-    expect(docs['organizations/acme/smsContacts/+12815550200']).toBeDefined()
-    expect(docs['organizations/acme/smsContacts/+12815550200'].invitedAt).toBe('SERVER_TIMESTAMP')
-    expect(docs['organizations/acme/smsContacts/+12815550200'].optIn).toBe(null)
+    expect(result).toEqual({ ok: true, status: 'queued', trackingNumber: '1Z999AA10123456784' })
+    expect(global.fetch).not.toHaveBeenCalled()
+    const auditLog = fs._collections.get('organizations/acme/auditLog')
+    expect(auditLog).toBeDefined()
+    expect(auditLog.map(e => e.action)).toContain('sms.invite_queued')
   })
 
   it('non-invite send is blocked when contact has never opted in', async () => {
@@ -118,7 +121,7 @@ describe('sendSms orchestration — double_opt_in', () => {
       'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
       'organizations/acme/settings/textMessaging': baseSettings,
       'organizations/acme/members/u1': { role: 'staff' },
-      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John', trackingNumber: '1Z999AA10123456784' },
     }
     globalThis.__testFirestore = makeFirestore({ docs })
 
@@ -134,7 +137,7 @@ describe('sendSms orchestration — double_opt_in', () => {
       'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
       'organizations/acme/settings/textMessaging': baseSettings,
       'organizations/acme/members/u1': { role: 'staff' },
-      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John', trackingNumber: '1Z999AA10123456784' },
       'organizations/acme/smsContacts/+12815550200': { phone: '+12815550200', optIn: false },
     }
     globalThis.__testFirestore = makeFirestore({ docs })
@@ -148,26 +151,25 @@ describe('sendSms orchestration — double_opt_in', () => {
 })
 
 describe('sendSms orchestration — auto_opt_in', () => {
-  it('auto-creates an opted-in contact on first send', async () => {
+  it('auto_opt_in first send is queued; contact bookkeeping belongs to the drain', async () => {
     const docs = {
       'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
       'organizations/acme/settings/textMessaging': { ...baseSettings, optInPolicy: 'auto_opt_in' },
       'organizations/acme/members/u1': { role: 'staff' },
-      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John', trackingNumber: '1Z999AA10123456784' },
     }
     globalThis.__testFirestore = makeFirestore({ docs })
     global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 3600 }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'rc-msg-2' }) })
 
     const sendSms = await loadSendSms()
-    await sendSms({
+    const result = await sendSms({
       auth: { uid: 'u1' },
       data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'delivered' },
     })
 
-    expect(docs['organizations/acme/smsContacts/+12815550200'].optIn).toBe(true)
-    expect(docs['organizations/acme/smsContacts/+12815550200'].respondedAt).toBe('SERVER_TIMESTAMP')
+    expect(result).toEqual({ ok: true, status: 'queued', trackingNumber: '1Z999AA10123456784' })
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(docs['organizations/acme/smsContacts/+12815550200']).toBeUndefined()
   })
 })
 
@@ -177,7 +179,7 @@ describe('sendSms orchestration — manual_confirm', () => {
       'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
       'organizations/acme/settings/textMessaging': { ...baseSettings, optInPolicy: 'manual_confirm' },
       'organizations/acme/members/u1': { role: 'staff' },
-      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John', trackingNumber: '1Z999AA10123456784' },
     }
     globalThis.__testFirestore = makeFirestore({ docs })
     const sendSms = await loadSendSms()
@@ -187,48 +189,115 @@ describe('sendSms orchestration — manual_confirm', () => {
     })).rejects.toMatchObject({ details: { code: 'consent_not_affirmed' } })
   })
 
-  it('allows send with consentAffirmed=true', async () => {
+  it('allows queueing with consentAffirmed=true', async () => {
     const docs = {
       'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
       'organizations/acme/settings/textMessaging': { ...baseSettings, optInPolicy: 'manual_confirm' },
       'organizations/acme/members/u1': { role: 'staff' },
-      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John', trackingNumber: '1Z999AA10123456784' },
     }
     globalThis.__testFirestore = makeFirestore({ docs })
     global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 3600 }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'rc-msg-3' }) })
 
     const sendSms = await loadSendSms()
     const r = await sendSms({
       auth: { uid: 'u1' },
       data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'delivered', consentAffirmed: true },
     })
-    expect(r.ok).toBe(true)
+    expect(r).toEqual({ ok: true, status: 'queued', trackingNumber: '1Z999AA10123456784' })
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 })
 
 describe('sendSms orchestration — failure paths', () => {
-  it('logs send_failed audit entry when RC returns 4xx', async () => {
-    const docs = {
+  it('rejects a shipment without a tracking number', async () => {
+    const fs = makeFirestore({ docs: {
       'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
-      'organizations/acme/settings/textMessaging': { ...baseSettings, optInPolicy: 'auto_opt_in' },
+      'organizations/acme/settings/textMessaging': baseSettings,
       'organizations/acme/members/u1': { role: 'staff' },
       'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John' },
-    }
-    const fs = makeFirestore({ docs })
+    } })
     globalThis.__testFirestore = fs
     global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 3600 }) })
-      .mockResolvedValueOnce({ ok: false, status: 400, text: async () => 'Bad number' })
 
     const sendSms = await loadSendSms()
     await expect(sendSms({
       auth: { uid: 'u1' },
       data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'delivered' },
-    })).rejects.toThrow(/Bad number/)
+    })).rejects.toMatchObject({
+      code: 'invalid-argument',
+      message: 'cannot queue a text for a shipment without a tracking number',
+    })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
 
-    const auditCalls = fs.collection.mock.calls.filter(c => c[0].endsWith('/auditLog'))
-    expect(auditCalls.length).toBeGreaterThan(0)
+  it('surfaces an HttpsError and an audit entry when enqueue fails', async () => {
+    const docs = {
+      'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
+      'organizations/acme/settings/textMessaging': { ...baseSettings, optInPolicy: 'auto_opt_in' },
+      'organizations/acme/members/u1': { role: 'staff' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John', trackingNumber: '1Z999AA10123456784' },
+    }
+    const fs = makeFirestore({ docs })
+    globalThis.__testFirestore = fs
+    global.fetch = vi.fn()
+    fs.runTransaction = vi.fn(async () => { throw new Error('ledger unavailable') })
+
+    const sendSms = await loadSendSms()
+    await expect(sendSms({
+      auth: { uid: 'u1' },
+      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'delivered' },
+    })).rejects.toMatchObject({ code: 'internal' })
+
+    const auditLog = fs._collections.get('organizations/acme/auditLog')
+    expect(auditLog).toBeDefined()
+    expect(auditLog.map(e => e.action)).toContain('sms.enqueue_failed')
+  })
+})
+describe('sendSms enqueues instead of sending directly', () => {
+  const ORG = 'acme'
+
+  function makeDocs(trackingNumber) {
+    return {
+      'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
+      'organizations/acme/settings/textMessaging': baseSettings,
+      'organizations/acme/members/u1': { role: 'staff' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John', trackingNumber },
+      // The opt-in policy gate still applies at enqueue time (double_opt_in
+      // requires an opted-in contact before a non-invite template can queue).
+      'organizations/acme/smsContacts/+12815550200': { phone: '+12815550200', optIn: true },
+    }
+  }
+
+  it('returns { ok: true, status: "queued", trackingNumber } and never calls the provider directly', async () => {
+    const fs = makeFirestore({ docs: makeDocs('1Z999AA10123456784') })
+    globalThis.__testFirestore = fs
+    global.fetch = vi.fn()
+    _clearTokenCache()
+    const sendSms = await loadSendSms()
+    const result = await sendSms({
+      auth: { uid: 'u1' },
+      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'delivered' },
+    })
+    expect(result).toEqual({ ok: true, status: 'queued', trackingNumber: '1Z999AA10123456784' })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('returns already_notified for a second send of the same shipment', async () => {
+    const fs = makeFirestore({ docs: makeDocs('1Z999AA10123456784') })
+    globalThis.__testFirestore = fs
+    global.fetch = vi.fn()
+    _clearTokenCache()
+    const sendSms = await loadSendSms()
+    await sendSms({
+      auth: { uid: 'u1' },
+      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'delivered' },
+    })
+    const second = await sendSms({
+      auth: { uid: 'u1' },
+      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'delivered' },
+    })
+    expect(second).toEqual({ ok: true, status: 'already_notified', trackingNumber: '1Z999AA10123456784' })
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 })

@@ -65,7 +65,7 @@ describe('field-toggle seam: phone field off → SMS send refused with correct g
         templates: { optInInvite: 'Hi from {{pharmacyName}}! YES STOP' },
       },
       'organizations/acme/members/u1': { role: 'staff' },
-      'organizations/acme/shipments/s1': { phone: '+12815550200' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', trackingNumber: '1Z999AA10123456784' },
     }
     globalThis.__testFirestore = makeFirestore({ docs })
     global.fetch = vi.fn()

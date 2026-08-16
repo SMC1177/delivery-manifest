@@ -1,4 +1,4 @@
-import { ledgerKey, requireField as coerceRequired } from './smsLedger.js'
+import { claimSend, ledgerKey, requireField as coerceRequired } from './smsLedger.js'
 
 /**
  * The SMS notification queue.
@@ -37,6 +37,10 @@ export async function enqueue({
   shipmentIds = [],
   now = new Date(),
 }) {
+  const claim = await claimSend({ firestore, orgSlug, trackingNumber, templateKey, now })
+  if (!claim.claimed) {
+    return { enqueued: false, reason: 'already_notified', trackingNumber }
+  }
   const org = requireField(orgSlug, 'orgSlug')
   const tracking = requireField(trackingNumber, 'trackingNumber')
   const template = requireField(templateKey, 'templateKey')
@@ -60,12 +64,12 @@ export async function enqueue({
         createdAt,
         nextAttemptAt: createdAt,
       })
-      return { enqueued: true, path }
+      return { enqueued: true, trackingNumber }
     }
 
     const merged = [...new Set([...(existing.shipmentIds || []), ...incoming])]
     tx.set(ref, { ...existing, shipmentIds: merged })
-    return { enqueued: false, path }
+    return { enqueued: true, trackingNumber }
   })
 }
 

@@ -14,7 +14,7 @@ import { TEMPLATE_VARS } from '../sms-templates.js'
  * result field by field rather than spreading its input — a spread is how a
  * clinical field would end up on a patient's phone.
  */
-export const BATCHED_TEMPLATE_VARS = [...TEMPLATE_VARS, 'prescriptionCount']
+export const BATCHED_TEMPLATE_VARS = [...TEMPLATE_VARS]
 
 function requireVar(value, name) {
   if (value === undefined || value === null || String(value).trim() === '') {
