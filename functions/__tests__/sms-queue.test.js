@@ -749,3 +749,40 @@ describe('backoff and page fairness', () => {
     expect(claimed.map((item) => item.trackingNumber).sort()).toEqual(ready)
   })
 })
+
+describe('drainQueue default limit', () => {
+  const ORG = 'acme'
+  const TPL = 'delivered'
+  const NOW = new Date('2026-08-13T12:00:00.000Z')
+
+  async function seed(firestore, trackingNumbers) {
+    for (const trackingNumber of trackingNumbers) {
+      await enqueue({
+        firestore,
+        orgSlug: ORG,
+        trackingNumber,
+        templateKey: TPL,
+        shipmentIds: [`s_${trackingNumber}`],
+        now: NOW,
+      })
+    }
+  }
+
+  it('drainQueue defaults to a page of 25 when no limit is given, so a huge queue cannot be loaded at once', async () => {
+    const { firestore } = makeQueryableFirestore()
+    await seed(firestore, Array.from({ length: 40 }, (_, i) => `T${i}`))
+    const sendMessage = vi.fn(async () => ({ id: 'rc_1' }))
+
+    const result = await drainQueue({
+      firestore,
+      orgSlug: ORG,
+      workerId: 'w1',
+      sendMessage,
+      cap: 1000,
+      now: NOW,
+    })
+
+    expect(result.claimed).toBe(25)
+    expect(sendMessage).toHaveBeenCalledTimes(25)
+  })
+})

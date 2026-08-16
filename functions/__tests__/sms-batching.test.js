@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildBatchedVars, BATCHED_TEMPLATE_VARS } from '../lib/smsBatching.js'
-import { TEMPLATE_VARS } from '../sms-templates.js'
+import { TEMPLATE_VARS, renderTemplate } from '../sms-templates.js'
 
 /**
  * Batching is pure: it turns one queue item into the variables a template needs.
@@ -102,5 +102,32 @@ describe('BATCHED_TEMPLATE_VARS', () => {
     for (const name of BATCHED_TEMPLATE_VARS) {
       expect(name).not.toMatch(/drug|ndc|gpi|rx|diagnos|medication|dose/i)
     }
+  })
+})
+
+describe('rendered batched body', () => {
+  it('never renders a clinical field into the final SMS text', () => {
+    const vars = buildBatchedVars({
+      item: {
+        shipmentIds: ['s1', 's2', 's3'],
+        drugName: 'celecoxib',
+        ndc: '00093372755',
+        drugGpi: '66100510002020',
+        rxNumber: '1111111',
+      },
+      pharmacyName: 'Test Pharmacy',
+      patientName: 'Jane Doe',
+      pharmacyPhone: '+15551234567',
+    })
+
+    const body = renderTemplate(
+      'Your order from {{pharmacyName}} is ready. Call {{pharmacyPhone}}.',
+      vars,
+    )
+
+    expect(body).not.toMatch(/celecoxib/i)
+    expect(body).not.toMatch(/00093372755/)
+    expect(body).not.toMatch(/66100510002020/)
+    expect(body).not.toMatch(/1111111/)
   })
 })

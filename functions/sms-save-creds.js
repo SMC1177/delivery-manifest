@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager'
+import { normalizePhone } from './lib/phoneNormalize.js'
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'delivery-manifest-c3deb'
 
@@ -83,6 +84,18 @@ export const saveRingCentralCreds = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'orgSlug must be a valid identifier')
   }
 
+  // Validate fromNumber at the boundary — reject a malformed sender number with
+  // a clear message instead of storing it and failing later at send time (MSG-245).
+  let normalizedFromNumber
+  try {
+    normalizedFromNumber = normalizePhone(fromNumber)
+  } catch (err) {
+    throw new HttpsError(
+      'invalid-argument',
+      `fromNumber must be a valid US phone number (10 digits, optional leading 1). Got: "${fromNumber}"`,
+    )
+  }
+
   const firestore = getFirestore()
 
   // Admin role check
@@ -123,7 +136,7 @@ export const saveRingCentralCreds = onCall(async (request) => {
   // 2. Write non-sensitive fields to Firestore
   await firestore.doc(`organizations/${orgSlug}/settings/textMessaging`).set(
     {
-      ringcentral: { server, fromNumber },
+      ringcentral: { server, fromNumber: normalizedFromNumber },
       credsConfigured: true,
       credsUpdatedAt: FieldValue.serverTimestamp(),
       credsUpdatedBy: request.auth.uid,

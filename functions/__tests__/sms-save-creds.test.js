@@ -67,6 +67,14 @@ describe('saveRingCentralCreds', () => {
       .rejects.toMatchObject({ code: 'invalid-argument' })
   })
 
+  it('rejects a malformed fromNumber at the boundary instead of storing it', async () => {
+    _setClient(freshSecretClient())
+    await expect(saveRingCentralCreds({
+      auth: { uid: 'u1' },
+      data: { ...validInput, fromNumber: 'not-a-phone-number' },
+    })).rejects.toMatchObject({ code: 'invalid-argument' })
+  })
+
   it('rejects invalid orgSlug format', async () => {
     _setClient(freshSecretClient())
     await expect(saveRingCentralCreds({ auth: { uid: 'u1' }, data: { ...validInput, orgSlug: '../etc/passwd' } }))
