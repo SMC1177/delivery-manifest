@@ -15,7 +15,6 @@ import { enqueue } from './lib/smsQueue.js'
  */
 export const STATUS_TEMPLATE_KEYS = {
   shipped: 'shipped',
-  in_transit: 'in_transit',
   delivered: 'delivered',
   exception: 'exception',
 }

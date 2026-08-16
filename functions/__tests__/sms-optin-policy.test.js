@@ -173,3 +173,24 @@ describe('w6-3: the status trigger never auto-enqueues an opt-in invite', () => 
     }
   })
 })
+
+describe('checkOptInPolicy seam — both send paths call the gate', () => {
+  const sourceOf = async (rel) => {
+    const { readFileSync } = await import('node:fs')
+    return readFileSync(new URL(rel, import.meta.url), 'utf8')
+  }
+
+  it('the manual send path imports and calls checkOptInPolicy', async () => {
+    const src = await sourceOf('../sms-send.js')
+    expect(src).toContain("checkOptInPolicy")
+    expect(src).toContain("from './sms-gates.js'")
+    expect(src).toMatch(/checkOptInPolicy\(\{/)
+  })
+
+  it('the automated queue-send path imports and calls checkOptInPolicy', async () => {
+    const src = await sourceOf('../sms-queue-send.js')
+    expect(src).toContain("checkOptInPolicy")
+    expect(src).toContain("from './sms-gates.js'")
+    expect(src).toMatch(/checkOptInPolicy\(\{/)
+  })
+})

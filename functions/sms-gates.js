@@ -71,9 +71,21 @@ export function checkSendPreconditions({ auth, memberRole, settings, org, shipme
   return checkOrgMayText({ settings, org, shipment })
 }
 
-export function checkOptInPolicy({ settings, contact, templateKey, consentAffirmed }) {
+export function checkOptInPolicy({ settings, contact, templateKey, consentAffirmed, orgSlug }) {
   // STOP is always universal locked out is locked out regardless of policy
   if (contact && contact.optIn === false) return fail(GATE_ERRORS.OPTED_OUT)
+
+  if (
+    settings.optInPolicy
+    && settings.optInPolicy !== 'auto_opt_in'
+    && settings.optInPolicy !== 'manual_confirm'
+    && settings.optInPolicy !== 'double_opt_in'
+  ) {
+    // An unrecognised policy silently degrades to double_opt_in. On the automated
+    // path that is NOT loud: every grey-patient message is refused, the drain
+    // retries then dead-letters, and nobody sees anything unless they look.
+    console.warn(`[sms] unrecognised optInPolicy "${settings.optInPolicy}" for org "${orgSlug || 'unknown'}" — falling back to double_opt_in`)
+  }
 
   const policy = settings.optInPolicy || 'double_opt_in'
 

@@ -59,11 +59,14 @@ const FUZZY_RULES = [
   [/prescriber\s*city/i, 'prescriberCity'],
   [/prescriber\s*state/i, 'prescriberState'],
   // Effective Date and Refill Date get their own fields. Date Written and
-  // Date Filled deliberately do NOT: two regression guards pin them to the
-  // canonical `date` field, and which date should be canonical is an open
-  // question for the operator. Both remain available for manual mapping.
+  // Date Filled get their own fields too (operator ruling 2026-08-16: read when
+  // present, leave empty when absent — blank is truth, flag rather than guess).
+  // The canonical manifest date keeps resolving as before: it falls back to
+  // dateFilled at apply time so existing behaviour is unchanged.
   [/effective\s*date/i, 'effectiveDate'],
   [/refill\s*date/i, 'refillDate'],
+  [/date\s*filled|fill\s*date/i, 'dateFilled'],
+  [/date\s*written/i, 'dateWritten'],
   // MUST precede the notes rule, which otherwise captures the drug description.
   [/dispensed\s*drug|drug\s*description/i, 'drugDescription'],
   [/drug\s*gpi|^gpi$/i, 'drugGpi'],
@@ -262,7 +265,7 @@ export function applyMapping(rows, mapping) {
       rxNumbers: parseRxNumbers(get('rxNumbers')),
       trackingNumber: tracking,
       carrier: detectCarrierFromTracking(tracking),
-      date: get('date') ? normalizeDate(get('date')) : '',
+      date: get('date') ? normalizeDate(get('date')) : (get('dateFilled') ? normalizeDate(get('dateFilled')) : ''),
       refillNumber: get('refillNumber') != null ? String(get('refillNumber')).trim() : '',
       notes: get('notes') ? String(get('notes')).trim() : '',
     }

@@ -152,4 +152,8 @@ describe('STATUS_TEMPLATE_KEYS', () => {
     expect(STATUS_TEMPLATE_KEYS.archived).toBeUndefined()
     expect(STATUS_TEMPLATE_KEYS.pending).toBeUndefined()
   })
+
+  it('w0-1: in_transit generates no message — it tells a patient nothing actionable', () => {
+    expect(STATUS_TEMPLATE_KEYS.in_transit).toBeUndefined()
+  })
 })
