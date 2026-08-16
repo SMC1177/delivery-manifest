@@ -5,8 +5,10 @@ import { renderTemplate } from './sms-templates.js'
 import { sendRingCentralSms } from './ringcentral-sms.js'
 import { getRingCentralCredsForOrg } from './lib/rcCredentials.js'
 
-const OPT_IN_WORDS = new Set(['YES', 'Y', 'START'])
+const OPT_IN_WORDS = new Set(['YES', 'Y', 'START', 'SI', 'OUI'])
 const OPT_OUT_WORDS = new Set(['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'PARE', 'ARRET', 'ALTO', 'BAJA', 'DETENER', 'PARAR', 'NO'])
+const SPANISH_WORDS = new Set(['PARE', 'ALTO', 'BAJA', 'DETENER', 'PARAR', 'NO', 'SI'])
+const FRENCH_WORDS = new Set(['ARRET', 'OUI'])
 
 function classifyBody(body) {
   if (typeof body !== 'string') return 'non_keyword'
@@ -14,6 +16,17 @@ function classifyBody(body) {
   if (OPT_IN_WORDS.has(word)) return 'opt_in'
   if (OPT_OUT_WORDS.has(word)) return 'opt_out'
   return 'non_keyword'
+}
+
+// Learn the patient's language from a classified reply word. Returns undefined
+// when the reply carries no language signal, so the existing contact language
+// (if any) is preserved via the merge write below.
+function deriveLanguageFromReply(reply) {
+  if (typeof reply !== 'string') return undefined
+  const word = reply.trim().toUpperCase()
+  if (SPANISH_WORDS.has(word)) return 'es'
+  if (FRENCH_WORDS.has(word)) return 'fr'
+  return undefined
 }
 
 export const ringcentralInbound = onRequest(async (req, res) => {
@@ -136,10 +149,12 @@ export const ringcentralInbound = onRequest(async (req, res) => {
 
   // Match — update contact + audit
   const optIn = classification === 'opt_in'
+  const language = deriveLanguageFromReply(text)
   await contactRef.set(
     {
       phone,
       optIn,
+      ...(language ? { language } : {}),
       respondedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },
@@ -153,7 +168,15 @@ export const ringcentralInbound = onRequest(async (req, res) => {
 
   // Optional auto-confirm
   if (settings.autoReplyOnYesStop) {
-    const templateKey = optIn ? 'optInConfirm' : 'optOutConfirm'
+    let templateKey = optIn ? 'optInConfirm' : 'optOutConfirm'
+    // Send the opt-out confirmation in the patient's reply language when a
+    // localized template exists (suffix convention: optOutConfirmEs / optOutConfirmFr).
+    if (!optIn) {
+      const localizedKey = language === 'es' ? 'optOutConfirmEs' : language === 'fr' ? 'optOutConfirmFr' : null
+      if (localizedKey && settings.templates?.[localizedKey]) {
+        templateKey = localizedKey
+      }
+    }
     const template = settings.templates?.[templateKey]
     if (template) {
       let autoReplyCreds

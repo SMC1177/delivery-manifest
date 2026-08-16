@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { renderTemplate, validateOptInInvite, TEMPLATE_VARS, validateTemplatePlaceholders } from '../sms-templates.js'
+import { renderTemplate, validateOptInInvite, TEMPLATE_VARS, validateTemplatePlaceholders, resolveTemplate } from '../sms-templates.js'
 
 describe('renderTemplate', () => {
   it('substitutes {{var}} placeholders', () => {
@@ -125,5 +125,69 @@ describe('validateTemplatePlaceholders', () => {
     // adds prescriptionCount via BATCHED_TEMPLATE_VARS, so the literal is a
     // superset of TEMPLATE_VARS. Assert coverage, not exact equality.
     expect([...sendKeys].sort()).toEqual(expect.arrayContaining([...expectedVars].sort()))
+  })
+})
+
+describe('resolveTemplate language resolution', () => {
+  const settings = {
+    defaultLanguage: 'en',
+    templates: {
+      pickupReady: 'LEGACY EN: ready at {{pharmacyName}}',
+    },
+    templatesByLang: {
+      en: { pickupReady: 'EN: ready at {{pharmacyName}}' },
+      fr: { pickupReady: 'FR: prête chez {{pharmacyName}}' },
+    },
+  }
+
+  it('uses the patient-language template when present', () => {
+    const body = resolveTemplate({
+      language: 'en',
+      templateKey: 'pickupReady',
+      settings,
+      patientLanguage: 'fr',
+    })
+    expect(body).toBe('FR: prête chez {{pharmacyName}}')
+  })
+
+  it('falls back to the org default language when the patient language is missing', () => {
+    const body = resolveTemplate({
+      language: 'en',
+      templateKey: 'pickupReady',
+      settings,
+      patientLanguage: 'es',
+    })
+    expect(body).toBe('EN: ready at {{pharmacyName}}')
+  })
+
+  it('falls back to the legacy English templates map when no language entry exists', () => {
+    const body = resolveTemplate({
+      language: 'en',
+      templateKey: 'pickupReady',
+      settings: {
+        defaultLanguage: 'en',
+        templates: { pickupReady: 'LEGACY EN: ready' },
+        templatesByLang: {},
+      },
+      patientLanguage: 'fr',
+    })
+    expect(body).toBe('LEGACY EN: ready')
+  })
+
+  it('throws a named error when no template matches', () => {
+    let error
+    try {
+      resolveTemplate({
+        language: 'en',
+        templateKey: 'pickupReady',
+        settings: { defaultLanguage: 'en', templates: {}, templatesByLang: {} },
+        patientLanguage: 'fr',
+      })
+    } catch (caught) {
+      error = caught
+    }
+    expect(error).toBeDefined()
+    expect(error.name).toBe('NoTemplateFoundError')
+    expect(error.message).toContain('pickupReady')
   })
 })

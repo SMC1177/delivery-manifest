@@ -37,6 +37,24 @@ export function validateTemplatePlaceholders(body) {
   }
 }
 
+export class NoTemplateFoundError extends Error {
+  constructor(message) {
+    super(message)
+    this.name = 'NoTemplateFoundError'
+  }
+}
+
+export function resolveTemplate({ language, templateKey, settings, patientLanguage }) {
+  // w8-6 language resolution: patient override → org default → legacy English.
+  const byLang = settings?.templatesByLang || {}
+  if (patientLanguage && byLang[patientLanguage]?.[templateKey]) return byLang[patientLanguage][templateKey]
+  const orgLang = language || settings?.defaultLanguage || settings?.language || 'en'
+  if (orgLang && byLang[orgLang]?.[templateKey]) return byLang[orgLang][templateKey]
+  const legacy = settings?.templates?.[templateKey]
+  if (legacy) return legacy
+  throw new NoTemplateFoundError(`unknown template "${templateKey}" for language "${orgLang}" (patient "${patientLanguage || 'none'}")`)
+}
+
 export function renderTemplate(template, vars) {
   const required = new Set()
   const PLACEHOLDER = /\{\{(\w+)\}\}/g

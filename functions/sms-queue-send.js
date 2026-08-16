@@ -13,7 +13,7 @@
 //   - catch provider errors: it throws, and the drain's fail() decides backoff or
 //     dead-letter. A silent success here would drop a real message.
 import { normalizePhone } from './lib/phoneNormalize.js'
-import { renderTemplate } from './sms-templates.js'
+import { renderTemplate, resolveTemplate } from './sms-templates.js'
 import { checkOrgMayText, checkOptInPolicy } from './sms-gates.js'
 import { buildBatchedVars } from './lib/smsBatching.js'
 import { sendRingCentralSms } from './ringcentral-sms.js'
@@ -77,8 +77,12 @@ export async function sendQueuedMessage({ firestore, orgSlug, item }) {
   })
   if (!policy.ok) throw refuse(policy.code)
 
-  const template = settings?.templates?.[item.templateKey]
-  if (!template) throw refuse(`unknown template: ${item.templateKey}`)
+  const template = resolveTemplate({
+    language: settings?.language,
+    templateKey: item.templateKey,
+    settings,
+    patientLanguage: contact?.language,
+  })
 
   const body = renderTemplate(
     template,

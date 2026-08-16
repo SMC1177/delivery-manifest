@@ -219,3 +219,76 @@ describe('w8-5 multilingual opt-out', () => {
     },
   )
 })
+
+describe('w8-6 language learning from inbound replies', () => {
+  it('PARE sets the contact language to es (learned from the reply) and opts out', async () => {
+    const docs = {
+      'organizations/acme/settings/textMessaging': baseSettings,
+      'organizations/acme': { name: 'Acme RX' },
+    }
+    const fs = makeFirestore({ docs })
+    globalThis.__testFirestore = fs
+    const { ringcentralInbound } = await import('../sms-inbound.js')
+    const res = makeRes()
+
+    await ringcentralInbound(makeReq({
+      body: { body: { from: { phoneNumber: '+12815550200' }, subject: 'PARE', messageId: 'rc-lang-1' } },
+    }), res)
+
+    expect(res._status).toBe(200)
+    const contact = docs['organizations/acme/smsContacts/+12815550200']
+    expect(contact.optIn).toBe(false)
+    expect(contact.language).toBe('es')
+  })
+
+  it('SI sets optIn=true and language es; OUI sets optIn=true and language fr', async () => {
+    const docs = {
+      'organizations/acme/settings/textMessaging': baseSettings,
+      'organizations/acme': { name: 'Acme RX' },
+    }
+    const fs = makeFirestore({ docs })
+    globalThis.__testFirestore = fs
+    const { ringcentralInbound } = await import('../sms-inbound.js')
+
+    await ringcentralInbound(makeReq({
+      body: { body: { from: { phoneNumber: '+12815550200' }, subject: 'SI', messageId: 'rc-lang-2' } },
+    }), makeRes())
+    expect(docs['organizations/acme/smsContacts/+12815550200'].optIn).toBe(true)
+    expect(docs['organizations/acme/smsContacts/+12815550200'].language).toBe('es')
+
+    await ringcentralInbound(makeReq({
+      body: { body: { from: { phoneNumber: '+12815550300' }, subject: 'OUI', messageId: 'rc-lang-3' } },
+    }), makeRes())
+    expect(docs['organizations/acme/smsContacts/+12815550300'].optIn).toBe(true)
+    expect(docs['organizations/acme/smsContacts/+12815550300'].language).toBe('fr')
+  })
+
+  it('sends the opt-out confirmation auto-reply in the patient language (es for a Spanish reply)', async () => {
+    const docs = {
+      'organizations/acme/settings/textMessaging': {
+        ...baseSettings,
+        autoReplyOnYesStop: true,
+        templates: {
+          ...baseSettings.templates,
+          optOutConfirmEs: 'Está dado de baja de {{pharmacyName}}.',
+        },
+      },
+      'organizations/acme': { name: 'Acme RX' },
+    }
+    const fs = makeFirestore({ docs })
+    globalThis.__testFirestore = fs
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 3600 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'reply-1' }) })
+
+    const { ringcentralInbound } = await import('../sms-inbound.js')
+    await ringcentralInbound(makeReq({
+      body: { body: { from: { phoneNumber: '+12815550200' }, subject: 'PARE', messageId: 'rc-lang-4' } },
+    }), makeRes())
+
+    // fetch call #1 = token, call #2 = the SMS send; the sent text must be Spanish.
+    const sendInit = JSON.parse(global.fetch.mock.calls[1][1].body)
+    expect(sendInit.text).toContain('Está dado de baja')
+    expect(docs['organizations/acme/smsContacts/+12815550200'].language).toBe('es')
+  })
+})
