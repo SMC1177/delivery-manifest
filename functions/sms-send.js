@@ -53,10 +53,20 @@ export const sendSms = onCall(async (request) => {
     throw new HttpsError('invalid-argument', `Phone number is invalid: ${e.message}`)
   }
 
-  // Load contact (may not exist yet)
-  const contactRef = firestore.doc(`organizations/${orgSlug}/smsContacts/${phone}`)
-  const contactSnap = await contactRef.get()
-  const contact = contactSnap.exists ? contactSnap.data() : null
+  // Load contact (may not exist yet). FAIL-OPEN ruling (2026-08-16): if the
+  // consent READ itself fails (timeout/indeterminate), assume opt-in rather than
+  // suppressing a transactional delivery notice — and log it so a message sent on
+  // real consent is distinguishable from one sent because a read timed out.
+  // The catch covers ONLY this read — never checkOptInPolicy or the gate section.
+  let contact
+  try {
+    const contactRef = firestore.doc(`organizations/${orgSlug}/smsContacts/${phone}`)
+    const contactSnap = await contactRef.get()
+    contact = contactSnap.exists ? contactSnap.data() : null
+  } catch (err) {
+    console.warn(`[sms] consent read failed for org "${orgSlug}" phone "${phone}" — assuming opt-in: ${err && err.message ? err.message : err}`)
+    contact = { optIn: true }
+  }
 
   // Opt-in policy (fast-fail at the button; the drain re-checks at send time)
   const policy = checkOptInPolicy({
@@ -64,6 +74,7 @@ export const sendSms = onCall(async (request) => {
     contact,
     templateKey,
     consentAffirmed,
+    orgSlug,
   })
   if (!policy.ok) {
     throw new HttpsError('failed-precondition', userMessageFor(policy.code), { code: policy.code })

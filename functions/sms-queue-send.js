@@ -54,8 +54,17 @@ export async function sendQueuedMessage({ firestore, orgSlug, item }) {
   const gate = checkOrgMayText({ settings, org, shipment: shipments[0] })
   if (!gate.ok) throw refuse(gate.code)
 
-  const contactSnap = await firestore.doc(`organizations/${orgSlug}/smsContacts/${phone}`).get()
-  const contact = contactSnap.exists ? contactSnap.data() : null
+  // FAIL-OPEN ruling (2026-08-16): a consent READ failure (timeout) assumes
+  // opt-in — the catch covers ONLY this read, never the gate; log it so real
+  // consent is distinguishable from a timed-out read.
+  let contact
+  try {
+    const contactSnap = await firestore.doc(`organizations/${orgSlug}/smsContacts/${phone}`).get()
+    contact = contactSnap.exists ? contactSnap.data() : null
+  } catch (err) {
+    console.warn(`[sms] consent read failed for org "${orgSlug}" phone "${phone}" — assuming opt-in: ${err && err.message ? err.message : err}`)
+    contact = { optIn: true }
+  }
 
   // consentAffirmed is false and stays false: under manual_confirm a human must affirm
   // consent, and there is no human in a scheduled drain to do it.
@@ -64,6 +73,7 @@ export async function sendQueuedMessage({ firestore, orgSlug, item }) {
     contact,
     templateKey: item.templateKey,
     consentAffirmed: false,
+    orgSlug,
   })
   if (!policy.ok) throw refuse(policy.code)
 

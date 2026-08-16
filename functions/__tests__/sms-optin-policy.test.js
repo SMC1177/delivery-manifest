@@ -61,22 +61,22 @@ describe('w6-1: checkOptInPolicy for a patient with no smsContacts document', ()
   })
 
   describe('values the code does not recognize', () => {
-    it('silently falls back to double_opt_in when the policy is missing', () => {
-      expect(checkOptInPolicy({ settings: {}, ...grey, templateKey: 'delivered' })).toEqual({
-        ok: false,
-        code: GATE_ERRORS.OPT_IN_REQUIRED,
-        message: 'This patient has not opted in to text messages yet. Send the opt-in invite first.',
-      })
-      expect(checkOptInPolicy({ settings: {}, ...grey, templateKey: 'optInInvite' })).toEqual({ ok: true })
+    it('silently falls back to auto_opt_in when the policy is missing', () => {
+      expect(checkOptInPolicy({ settings: {}, ...grey, templateKey: 'delivered' })).toEqual({ ok: true, autoCreateOptedIn: true })
+      expect(checkOptInPolicy({ settings: {}, ...grey, templateKey: 'optInInvite' })).toEqual({ ok: true, autoCreateOptedIn: true })
     })
 
-    it('silently falls back to double_opt_in for an unknown policy value', () => {
-      expect(checkOptInPolicy({ settings: { optInPolicy: 'triple_opt_in' }, ...grey, templateKey: 'delivered' })).toEqual({
+    it('an unknown truthy policy value keeps the double_opt_in tail (warned); only a MISSING policy falls back to auto_opt_in', () => {
+      expect(
+        checkOptInPolicy({ settings: { optInPolicy: 'triple_opt_in' }, ...grey, templateKey: 'delivered' })
+      ).toEqual({
         ok: false,
         code: GATE_ERRORS.OPT_IN_REQUIRED,
         message: 'This patient has not opted in to text messages yet. Send the opt-in invite first.',
       })
-      expect(checkOptInPolicy({ settings: { optInPolicy: 'triple_opt_in' }, ...grey, templateKey: 'optInInvite' })).toEqual({ ok: true })
+      expect(
+        checkOptInPolicy({ settings: { optInPolicy: 'triple_opt_in' }, ...grey, templateKey: 'optInInvite' })
+      ).toEqual({ ok: true })
     })
   })
 })

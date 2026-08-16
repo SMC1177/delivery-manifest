@@ -190,3 +190,32 @@ describe('ringcentralInbound', () => {
     expect(fs._audit.find(e => e.data.action === 'sms.auto_reply_sent')).toBeDefined()
   })
 })
+
+describe('w8-5 multilingual opt-out', () => {
+  it.each(['PARE', 'ARRET', 'ALTO', 'BAJA', 'DETENER', 'PARAR', 'NO'])(
+    '%s opts the contact out (optIn=false, audit reflects it)',
+    async (word) => {
+      const docs = {
+        'organizations/acme/settings/textMessaging': baseSettings,
+        'organizations/acme': { name: 'Acme RX' },
+      }
+      const fs = makeFirestore({ docs })
+      globalThis.__testFirestore = fs
+      const { ringcentralInbound } = await import('../sms-inbound.js')
+      const res = makeRes()
+
+      await ringcentralInbound(makeReq({
+        body: { body: { from: { phoneNumber: '+12815550200' }, subject: word, messageId: `rc-multi-${word}` } },
+      }), res)
+
+      // Non-English opt-out words must classify as opt-out (not non_keyword):
+      // the contact flips to optIn:false and the invite_response audit records
+      // the handler-normalized reply ('STOP'), not the raw word.
+      expect(docs['organizations/acme/smsContacts/+12815550200'].optIn).toBe(false)
+      expect(fs._audit.find(e => e.data.action === 'sms.non_keyword_inbound')).toBeUndefined()
+      const entry = fs._audit.find(e => e.data.action === 'sms.invite_response')
+      expect(entry).toBeDefined()
+      expect(entry.data.details.reply).toBe('STOP')
+    },
+  )
+})

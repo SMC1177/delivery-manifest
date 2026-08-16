@@ -84,10 +84,10 @@ export function checkOptInPolicy({ settings, contact, templateKey, consentAffirm
     // An unrecognised policy silently degrades to double_opt_in. On the automated
     // path that is NOT loud: every grey-patient message is refused, the drain
     // retries then dead-letters, and nobody sees anything unless they look.
-    console.warn(`[sms] unrecognised optInPolicy "${settings.optInPolicy}" for org "${orgSlug || 'unknown'}" — falling back to double_opt_in`)
+    console.warn(`[sms] unrecognised optInPolicy "${settings.optInPolicy}" for org "${orgSlug || 'unknown'}" — falling back to auto_opt_in`)
   }
 
-  const policy = settings.optInPolicy || 'double_opt_in'
+  const policy = settings.optInPolicy || 'auto_opt_in'
 
   if (policy === 'auto_opt_in') {
     return { ok: true, autoCreateOptedIn: !contact }

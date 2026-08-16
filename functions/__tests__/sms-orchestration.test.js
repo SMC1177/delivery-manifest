@@ -301,3 +301,44 @@ describe('sendSms enqueues instead of sending directly', () => {
     expect(global.fetch).not.toHaveBeenCalled()
   })
 })
+
+describe('consent-read fail-open', () => {
+  // A READ failure on the smsContacts doc must fail open: we cannot prove the
+  // contact opted out, so the send proceeds as an assumed opt-in and we warn.
+  it('queues the send when the smsContacts read rejects', async () => {
+    const docs = {
+      'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
+      'organizations/acme/settings/textMessaging': baseSettings,
+      'organizations/acme/members/u1': { role: 'staff' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John', trackingNumber: '1Z999AA10123456784' },
+    }
+    const fs = makeFirestore({ docs })
+    globalThis.__testFirestore = fs
+    global.fetch = vi.fn()
+    _clearTokenCache()
+
+    // Only the smsContacts doc read rejects; every other read keeps working.
+    const baseDoc = fs.doc.getMockImplementation()
+    fs.doc = vi.fn((path) => {
+      const ref = baseDoc(path)
+      if (path.startsWith('organizations/acme/smsContacts/')) {
+        ref.get = vi.fn(async () => { throw new Error('consent lookup failed') })
+      }
+      return ref
+    })
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const sendSms = await loadSendSms()
+    const result = await sendSms({
+      auth: { uid: 'u1' },
+      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'optInInvite' },
+    })
+
+    expect(result).toEqual({ ok: true, status: 'queued', trackingNumber: '1Z999AA10123456784' })
+    expect(global.fetch).not.toHaveBeenCalled()
+    const warnMessages = warnSpy.mock.calls.map((args) =>
+      args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '))
+    expect(warnMessages.some((m) => m.includes('acme') && m.includes('+12815550200'))).toBe(true)
+  })
+})

@@ -6,7 +6,7 @@ import { sendRingCentralSms } from './ringcentral-sms.js'
 import { getRingCentralCredsForOrg } from './lib/rcCredentials.js'
 
 const OPT_IN_WORDS = new Set(['YES', 'Y', 'START'])
-const OPT_OUT_WORDS = new Set(['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END'])
+const OPT_OUT_WORDS = new Set(['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'PARE', 'ARRET', 'ALTO', 'BAJA', 'DETENER', 'PARAR', 'NO'])
 
 function classifyBody(body) {
   if (typeof body !== 'string') return 'non_keyword'
