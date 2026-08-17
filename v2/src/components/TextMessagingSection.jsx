@@ -403,6 +403,21 @@ export default function TextMessagingSection({ slug, enabledFields, addToast, lo
           </div>
 
           <div className="mb-3">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Default message language</label>
+            <select
+              aria-label="Default message language"
+              value={settings.defaultLanguage || 'en'}
+              onChange={(e) => patch({ defaultLanguage: e.target.value }, 'defaultLanguage')}
+              className="px-2 py-1 border rounded text-sm bg-white"
+            >
+              {TEMPLATE_LANGUAGES.map((lang) => (
+                <option key={lang.value} value={lang.value}>{lang.label}</option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-400 mt-1">Fallback language for patients without their own preference.</p>
+          </div>
+
+          <div className="mb-3">
             <label className="block text-sm font-medium text-slate-700 mb-1">Opt-in Policy</label>
             <div className="space-y-1">
               {[

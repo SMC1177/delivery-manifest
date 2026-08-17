@@ -165,4 +165,26 @@ describe('<TextMessagingSection /> template editor', () => {
     // No save happened from merely revealing the draft
     expect(save).toHaveBeenCalledTimes(0)
   })
+
+
+  // ---- FINAL ITEM: org-default language dropdown (w8-6 follow-up) ----
+  it('shows a Default message language dropdown defaulting to English', () => {
+    renderSection()
+    const select = screen.getByLabelText(/default message language/i)
+    expect(select).toBeInTheDocument()
+    expect(select.value).toBe('en')
+  })
+
+  it('reflects a stored defaultLanguage', () => {
+    mockSettings({ defaultLanguage: 'es' })
+    renderSection()
+    expect(screen.getByLabelText(/default message language/i).value).toBe('es')
+  })
+
+  it('commits the chosen language to settings.defaultLanguage via save', () => {
+    renderSection()
+    const select = screen.getByLabelText(/default message language/i)
+    fireEvent.change(select, { target: { value: 'fr' } })
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ defaultLanguage: 'fr' }))
+  })
 })
