@@ -1,15 +1,18 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { updateDoc } from 'firebase/firestore'
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
-  doc: vi.fn(),
+  doc: vi.fn(() => ({ id: 'org-doc' })),
   getDoc: vi.fn(() => Promise.resolve({ exists: () => false })),
   onSnapshot: vi.fn((q, cb) => {
     cb({ docs: [] })
     return vi.fn()
   }),
+  updateDoc: vi.fn(() => Promise.resolve()),
+  serverTimestamp: vi.fn(() => 0),
 }))
 
 vi.mock('../lib/firebase', () => ({
@@ -17,15 +20,28 @@ vi.mock('../lib/firebase', () => ({
   db: {},
 }))
 
-vi.mock('../hooks/useOrgSettings', () => ({
-  useOrgSettings: () => ({
+// Mutable so tests can simulate a saved per-org visible-columns preference.
+const { mockOrgSettings } = vi.hoisted(() => ({
+  mockOrgSettings: {
     settings: { enabledFields: ['carrier', 'address', 'notes'] },
     isFieldEnabled: (field) => ['carrier', 'address', 'notes'].includes(field),
-  }),
+  },
+}))
+
+vi.mock('../hooks/useOrgSettings', () => ({
+  useOrgSettings: () => mockOrgSettings,
 }))
 
 vi.mock('../hooks/useTextMessagingSettings', () => ({
   useTextMessagingSettings: () => ({ data: null, loading: false, save: vi.fn() }),
+}))
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ orgSlug: 'test-org', user: {} }),
+}))
+
+vi.mock('../hooks/useSmsContact', () => ({
+  useSmsContact: () => ({ contact: null, loading: false, derivedState: 'unknown', normalizedPhone: null }),
 }))
 
 import ShipmentTable from '../components/ShipmentTable'
@@ -234,5 +250,175 @@ describe('queue state badges', () => {
       { id: 'q3', status: 'shipped', trackingNumber: 'T3', carrier: 'ups' },
     ])
     expect(queryByText(/Queued|Sending|Sent|Retrying|Not sent/)).toBeNull()
+  })
+})
+
+describe('patient settings modal', () => {
+  const shipments = [
+    {
+      id: 'settings-1',
+      patientName: 'Jane Smith',
+      date: '2025-06-15',
+      address: '123 Main St',
+      phone: '+1-555-0100',
+      dob: '1980-01-01',
+      rxNumbers: ['RX001'],
+      trackingNumber: '1Z999AA1',
+      carrier: 'ups',
+      status: 'shipped',
+    },
+  ]
+
+  it('opens the settings modal when the desktop patient name is clicked', () => {
+    const { getAllByRole, getByText, getByDisplayValue } = renderShipments(shipments)
+    const nameButtons = getAllByRole('button', { name: 'Jane Smith' })
+    fireEvent.click(nameButtons[0])
+    expect(getByText('Edit Shipment')).toBeInTheDocument()
+    expect(getByDisplayValue('Jane Smith')).toBeInTheDocument()
+  })
+
+  it('opens the settings modal when the mobile card patient name is clicked', () => {
+    const { getAllByRole, getByText, getByDisplayValue } = renderShipments(shipments)
+    const nameButtons = getAllByRole('button', { name: 'Jane Smith' })
+    fireEvent.click(nameButtons[nameButtons.length - 1])
+    expect(getByText('Edit Shipment')).toBeInTheDocument()
+    expect(getByDisplayValue('Jane Smith')).toBeInTheDocument()
+  })
+
+  it('closes the settings modal', () => {
+    const { getAllByRole, getByText, queryByText, container } = renderShipments(shipments)
+    fireEvent.click(getAllByRole('button', { name: 'Jane Smith' })[0])
+    expect(getByText('Edit Shipment')).toBeInTheDocument()
+    const backdrop = container.querySelector('.fixed.inset-0')
+    fireEvent.click(backdrop)
+    expect(queryByText('Edit Shipment')).toBeNull()
+  })
+})
+
+describe('column visibility chooser', () => {
+  const chooserShipments = [
+    {
+      id: 'cols-1',
+      patientName: 'Chooser Patient',
+      date: '2025-06-15',
+      rxNumbers: ['RX001', 'RX002'],
+      trackingNumber: '1Z999AA1',
+      carrier: 'ups',
+      status: 'shipped',
+      address: '123 Main St',
+      notes: 'Handling notes here',
+    },
+  ]
+
+  it('shows a Columns button that opens the column menu', () => {
+    const { getByRole, queryByLabelText, getByLabelText } = renderShipments(chooserShipments)
+    expect(queryByLabelText('Rx Numbers')).toBeNull()
+    fireEvent.click(getByRole('button', { name: 'Columns' }))
+    expect(getByLabelText('Rx Numbers')).toBeInTheDocument()
+  })
+
+  it('hides a column when it is unchecked in the menu', () => {
+    const { getByRole, getByLabelText, getAllByText, container } = renderShipments(chooserShipments)
+    // rx numbers render twice: the desktop cell and the (unchanged) mobile card
+    expect(getAllByText('RX001, RX002')).toHaveLength(2)
+    fireEvent.click(getByRole('button', { name: 'Columns' }))
+    fireEvent.click(getByLabelText('Rx Numbers'))
+    // desktop column hidden, mobile card still shows it
+    expect(getAllByText('RX001, RX002')).toHaveLength(1)
+    const rxHeaders = Array.from(container.querySelectorAll('thead th')).filter((th) => th.textContent === 'Rx Numbers')
+    expect(rxHeaders).toHaveLength(0)
+  })
+
+  it('persists the preference to the org settings doc', () => {
+    renderWithRouter(<ShipmentTable shipments={chooserShipments} {...mockHandlers} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }))
+    fireEvent.click(screen.getByLabelText('Notes'))
+    expect(updateDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        'settings.visibleColumns': expect.arrayContaining(['date', 'patientName', 'tracking', 'status']),
+      })
+    )
+  })
+
+  it('applies a saved per-org visible-columns preference', () => {
+    mockOrgSettings.settings.visibleColumns = ['date', 'patientName', 'rxNumbers', 'tracking', 'status']
+    try {
+      const { queryByText, getByText, container } = renderShipments(chooserShipments)
+      expect(queryByText('Address')).toBeNull()
+      expect(queryByText('Carrier')).toBeNull()
+      expect(queryByText('Notes')).toBeNull()
+      expect(getByText('Status')).toBeInTheDocument()
+      const headers = Array.from(container.querySelectorAll('thead th')).map((th) => th.textContent)
+      expect(headers).toEqual(['Date', 'Patient Name', 'Rx Numbers', 'Tracking #', 'Status', 'Actions'])
+    } finally {
+      delete mockOrgSettings.settings.visibleColumns
+    }
+  })
+})
+
+describe('frozen anchor columns', () => {
+  const frozenShipments = [
+    {
+      id: 'frozen-1',
+      patientName: 'Frozen Patient',
+      date: '2025-06-15',
+      rxNumbers: ['RX001'],
+      trackingNumber: '1Z999AA1',
+      carrier: 'ups',
+      status: 'shipped',
+      address: '123 Main St',
+    },
+  ]
+
+  it('wraps the desktop table in a horizontal-scroll container', () => {
+    const { container } = renderShipments(frozenShipments)
+    expect(container.querySelector('.overflow-x-auto')).not.toBeNull()
+  })
+
+  it('pins the anchor header cells with sticky positioning and left offsets', () => {
+    const { container } = renderShipments(frozenShipments)
+    const headers = Array.from(container.querySelectorAll('thead th'))
+    // Date, Patient Name, [Address], [Rx Numbers], Tracking #, [Carrier], Status, [Notes], Actions
+    const [dateTh, nameTh, , , trackTh, , statusTh] = headers
+    expect(dateTh.className).toContain('sticky')
+    expect(dateTh.style.left).toBe('0px')
+    expect(nameTh.className).toContain('sticky')
+    expect(nameTh.style.left).toBe('112px')
+    expect(trackTh.className).toContain('sticky')
+    expect(trackTh.style.left).toBe('272px')
+    expect(statusTh.className).toContain('sticky')
+    expect(statusTh.style.left).toBe('448px')
+  })
+
+  it('pins the anchor body cells with the same offsets', () => {
+    const { container } = renderShipments(frozenShipments)
+    const cells = Array.from(container.querySelectorAll('tbody tr td'))
+    expect(cells[0].className).toContain('sticky')
+    expect(cells[0].style.left).toBe('0px')
+    expect(cells[1].className).toContain('sticky')
+    expect(cells[1].style.left).toBe('112px')
+    expect(cells[4].style.left).toBe('272px')
+    expect(cells[6].style.left).toBe('448px')
+  })
+
+  it('shifts the frozen offsets right when row selection is enabled', () => {
+    const { container } = renderShipments(frozenShipments, {
+      selectedIds: new Set(),
+      onSelectionChange: vi.fn(),
+    })
+    const headers = Array.from(container.querySelectorAll('thead th'))
+    // checkbox column leads, then the frozen anchors shift by 40px
+    expect(headers[0].className).not.toContain('sticky')
+    expect(headers[1].textContent).toBe('Date')
+    expect(headers[1].style.left).toBe('40px')
+    expect(headers[2].style.left).toBe('152px')
+  })
+
+  it('leaves the mobile card view untouched', () => {
+    const { container } = renderShipments(frozenShipments)
+    const mobile = container.querySelector('.md\\:hidden')
+    expect(mobile).not.toBeNull()
+    expect(mobile.querySelectorAll('.sticky')).toHaveLength(0)
   })
 })

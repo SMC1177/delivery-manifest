@@ -7,17 +7,80 @@ import OptInDot from './OptInDot'
 import SendTextModal from './SendTextModal'
 import ShipmentModal from './ShipmentModal'
 import { useTextMessagingSettings } from '../hooks/useTextMessagingSettings'
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '../lib/firebase'
+
+const COLUMN_DEFS = [
+  { key: 'date', label: 'Date' },
+  { key: 'patientName', label: 'Patient Name' },
+  { key: 'address', label: 'Address' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'dob', label: 'DOB' },
+  { key: 'rxNumbers', label: 'Rx Numbers' },
+  { key: 'tracking', label: 'Tracking #' },
+  { key: 'carrier', label: 'Carrier' },
+  { key: 'status', label: 'Status' },
+  { key: 'redeliver', label: 'Redeliver' },
+  { key: 'notes', label: 'Notes' },
+]
+
+// Columns that are also gated by the org's enabledFields setting
+const ORG_GATED_COLUMNS = ['address', 'phone', 'dob', 'carrier', 'redeliver', 'notes']
+
+const DEFAULT_VISIBLE_COLUMNS = COLUMN_DEFS.map((c) => c.key)
+
+// Frozen anchor columns (pinned while the table scrolls). Widths are fixed so
+// the sticky left offsets line up; they must match the w-* classes on the cells.
+const FROZEN_DEFS = [
+  { key: 'date', width: 112 }, // w-28
+  { key: 'patientName', width: 160 }, // w-40
+  { key: 'tracking', width: 176 }, // w-44
+  { key: 'status', width: 160 }, // w-40
+]
 
 export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusChange, readOnly, selectedIds, onSelectionChange, queueStates }) {
   const { slug } = useParams()
-  const { isFieldEnabled } = useOrgSettings(slug)
+  const { settings, isFieldEnabled } = useOrgSettings(slug)
   const [expandedGroups, setExpandedGroups] = useState(new Set())
   const [smsModalShipment, setSmsModalShipment] = useState(null)
   const [settingsModalShipment, setSettingsModalShipment] = useState(null)
+  const [columnMenuOpen, setColumnMenuOpen] = useState(false)
+  const [columnOverride, setColumnOverride] = useState(null)
   const { data: smsSettings } = useTextMessagingSettings(slug)
   const smsEnabled = smsSettings?.enabled === true
 
   const selectionEnabled = selectedIds !== undefined && onSelectionChange !== undefined
+
+  // Column visibility: local toggle first, saved per-org preference second
+  const savedVisibleColumns = settings?.visibleColumns
+  const visibleColumns = columnOverride
+    ?? (Array.isArray(savedVisibleColumns) && savedVisibleColumns.length > 0 ? savedVisibleColumns : DEFAULT_VISIBLE_COLUMNS)
+
+  const isColumnVisible = (key) =>
+    visibleColumns.includes(key) && (!ORG_GATED_COLUMNS.includes(key) || isFieldEnabled(key))
+
+  const toggleColumn = (key) => {
+    const next = visibleColumns.includes(key)
+      ? visibleColumns.filter((k) => k !== key)
+      : [...visibleColumns, key]
+    setColumnOverride(next)
+    if (slug) {
+      updateDoc(doc(db, 'organizations', slug), {
+        'settings.visibleColumns': next,
+        updatedAt: serverTimestamp(),
+      }).catch((err) => console.warn(`Failed to save column visibility for org ${slug}:`, err))
+    }
+  }
+
+  // Sticky left offsets for the frozen anchor columns (checkbox col shifts them)
+  const frozenLeft = {}
+  let cursor = selectionEnabled ? 40 : 0
+  for (const def of FROZEN_DEFS) {
+    if (visibleColumns.includes(def.key)) {
+      frozenLeft[def.key] = cursor
+      cursor += def.width
+    }
+  }
 
   const isSelected = (id) => {
     if (!selectionEnabled) return false
@@ -98,7 +161,7 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
   const renderDesktopRow = (s, { isChild = false, groupHasChildren = false, childCount = 0, trackingKey = null, mergedRx = null } = {}) => (
     <tr
       key={s.id}
-      className={`${isChild ? 'bg-slate-50' : 'hover:bg-slate-50'} transition-colors ${groupHasChildren && !isChild ? 'cursor-pointer' : ''}`}
+      className={`group ${isChild ? 'bg-slate-50' : 'hover:bg-slate-50'} transition-colors ${groupHasChildren && !isChild ? 'cursor-pointer' : ''}`}
       onClick={groupHasChildren && !isChild ? () => toggleGroup(trackingKey) : undefined}
     >
       {selectionEnabled && (
@@ -125,79 +188,91 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
           />
         </td>
       )}
-      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{s.date || '\u2014'}</td>
-      <td className={`px-4 py-3 font-medium text-slate-900 ${isChild ? 'pl-8' : ''}`}>
-        <span className="inline-flex items-center gap-1.5">
-          <OptInDot slug={slug} phone={s.phone} enabled={smsEnabled} />
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setSettingsModalShipment(s) }}
-            className="text-blue-700 hover:underline cursor-pointer text-left"
-            title="Click to open patient settings"
-          >
-            {s.patientName}
-          </button>
-        </span>
-        {groupHasChildren && !isChild && (
-          <span className="ml-2 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
-            +{childCount}
+      {isColumnVisible('date') && (
+        <td className={`px-4 py-3 text-slate-600 whitespace-nowrap w-28 sticky ${isChild ? 'bg-slate-50' : 'bg-white group-hover:bg-slate-50'}`} style={{ left: frozenLeft.date }}>
+          {s.date || '\u2014'}
+        </td>
+      )}
+      {isColumnVisible('patientName') && (
+        <td className={`px-4 py-3 font-medium text-slate-900 w-40 sticky ${isChild ? 'bg-slate-50 pl-8' : 'bg-white group-hover:bg-slate-50'}`} style={{ left: frozenLeft.patientName }}>
+          <span className="inline-flex items-center gap-1.5">
+            <OptInDot slug={slug} phone={s.phone} enabled={smsEnabled} />
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setSettingsModalShipment(s) }}
+              className="text-blue-700 hover:underline cursor-pointer text-left"
+              title="Click to open patient settings"
+            >
+              {s.patientName}
+            </button>
           </span>
-        )}
-        {groupHasChildren && !isChild && (
-          <span className="ml-1 text-slate-400 text-xs">
-            {expandedGroups.has(trackingKey) ? '\u25B2' : '\u25BC'}
-          </span>
-        )}
-      </td>
-      {isFieldEnabled('address') && <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate">{s.address || '\u2014'}</td>}
-      {isFieldEnabled('phone') && <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{s.phone || '\u2014'}</td>}
-      {isFieldEnabled('dob') && <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{s.dob || '\u2014'}</td>}
-      <td className="px-4 py-3 text-slate-600">
-        {isChild
-          ? (Array.isArray(s.rxNumbers) ? s.rxNumbers.join(', ') : '\u2014')
-          : (mergedRx && mergedRx.length > 0 ? mergedRx.join(', ') : (Array.isArray(s.rxNumbers) ? s.rxNumbers.join(', ') : '\u2014'))
-        }
-      </td>
-      <td className="px-4 py-3 font-mono text-xs">
-        {s.trackingNumber ? (
-          <a
-            href={getTrackingUrl(s.carrier || 'ups', s.trackingNumber)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-800 hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {s.trackingNumber}
-          </a>
-        ) : (
-          <span className="text-slate-400">{'\u2014'}</span>
-        )}
-      </td>
-      {isFieldEnabled('carrier') && <td className="px-4 py-3 text-slate-600">{getCarrierName(s.carrier) || '\u2014'}</td>}
-      <td className="px-4 py-3">
-        <StatusBadge status={s.status} />
-        {s.status === 'exception' && (s.upsStatus || s.fedexStatus) ? (
-          <div
-            className="mt-1 text-xs text-red-700 whitespace-normal"
-            title={s.upsStatus || s.fedexStatus}
-          >
-            {s.upsStatus || s.fedexStatus}
-          </div>
-        ) : null}
-        {queueStates && queueStates[s.trackingNumber] ? (
-          <div className="mt-1">
-            <span className="inline-flex items-center px-1.5 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">
-              {queueStates[s.trackingNumber]}
+          {groupHasChildren && !isChild && (
+            <span className="ml-2 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
+              +{childCount}
             </span>
-          </div>
-        ) : null}
-      </td>
-      {isFieldEnabled('redeliver') && (
+          )}
+          {groupHasChildren && !isChild && (
+            <span className="ml-1 text-slate-400 text-xs">
+              {expandedGroups.has(trackingKey) ? '\u25B2' : '\u25BC'}
+            </span>
+          )}
+        </td>
+      )}
+      {isColumnVisible('address') && <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate">{s.address || '\u2014'}</td>}
+      {isColumnVisible('phone') && <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{s.phone || '\u2014'}</td>}
+      {isColumnVisible('dob') && <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{s.dob || '\u2014'}</td>}
+      {isColumnVisible('rxNumbers') && (
+        <td className="px-4 py-3 text-slate-600">
+          {isChild
+            ? (Array.isArray(s.rxNumbers) ? s.rxNumbers.join(', ') : '\u2014')
+            : (mergedRx && mergedRx.length > 0 ? mergedRx.join(', ') : (Array.isArray(s.rxNumbers) ? s.rxNumbers.join(', ') : '\u2014'))
+          }
+        </td>
+      )}
+      {isColumnVisible('tracking') && (
+        <td className={`px-4 py-3 font-mono text-xs w-44 sticky ${isChild ? 'bg-slate-50' : 'bg-white group-hover:bg-slate-50'}`} style={{ left: frozenLeft.tracking }}>
+          {s.trackingNumber ? (
+            <a
+              href={getTrackingUrl(s.carrier || 'ups', s.trackingNumber)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-800 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {s.trackingNumber}
+            </a>
+          ) : (
+            <span className="text-slate-400">{'\u2014'}</span>
+          )}
+        </td>
+      )}
+      {isColumnVisible('carrier') && <td className="px-4 py-3 text-slate-600">{getCarrierName(s.carrier) || '\u2014'}</td>}
+      {isColumnVisible('status') && (
+        <td className={`px-4 py-3 w-40 sticky ${isChild ? 'bg-slate-50' : 'bg-white group-hover:bg-slate-50'}`} style={{ left: frozenLeft.status }}>
+          <StatusBadge status={s.status} />
+          {s.status === 'exception' && (s.upsStatus || s.fedexStatus) ? (
+            <div
+              className="mt-1 text-xs text-red-700 whitespace-normal"
+              title={s.upsStatus || s.fedexStatus}
+            >
+              {s.upsStatus || s.fedexStatus}
+            </div>
+          ) : null}
+          {queueStates && queueStates[s.trackingNumber] ? (
+            <div className="mt-1">
+              <span className="inline-flex items-center px-1.5 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">
+                {queueStates[s.trackingNumber]}
+              </span>
+            </div>
+          ) : null}
+        </td>
+      )}
+      {isColumnVisible('redeliver') && (
         <td className="px-4 py-3">
           {s.redeliver ? <span className="text-orange-600 text-xs font-medium">Yes</span> : <span className="text-slate-400 text-xs">{'\u2014'}</span>}
         </td>
       )}
-      {isFieldEnabled('notes') && <td className="px-4 py-3 text-slate-500 text-xs max-w-[150px] truncate">{s.notes || '\u2014'}</td>}
+      {isColumnVisible('notes') && <td className="px-4 py-3 text-slate-500 text-xs max-w-[150px] truncate">{s.notes || '\u2014'}</td>}
       {!readOnly && (
       <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
         <select
@@ -318,7 +393,42 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
   return (
     <>
       {/* Desktop table */}
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden md:block">
+        <div className="flex items-center justify-end mb-2">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setColumnMenuOpen((open) => !open)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded px-2.5 py-1.5 hover:bg-slate-50"
+            >
+              Columns
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {columnMenuOpen && (
+              <div className="absolute right-0 z-30 mt-1 w-56 bg-white border border-slate-200 rounded-md shadow-lg p-2">
+                {COLUMN_DEFS.map((c) => (
+                  <label
+                    key={c.key}
+                    className="flex items-center gap-2 px-2 py-1.5 text-sm text-slate-700 rounded hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border-slate-300"
+                      checked={isColumnVisible(c.key)}
+                      disabled={ORG_GATED_COLUMNS.includes(c.key) && !isFieldEnabled(c.key)}
+                      onChange={() => toggleColumn(c.key)}
+                      title={ORG_GATED_COLUMNS.includes(c.key) && !isFieldEnabled(c.key) ? 'Disabled by organization settings' : undefined}
+                    />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
         <table className="min-w-full text-sm text-left">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500 uppercase text-xs tracking-wider sticky top-0 bg-white z-10">
@@ -341,17 +451,17 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
                   />
                 </th>
               )}
-              <th className="px-4 py-3 font-medium">Date</th>
-              <th className="px-4 py-3 font-medium">Patient Name</th>
-              {isFieldEnabled('address') && <th className="px-4 py-3 font-medium">Address</th>}
-              {isFieldEnabled('phone') && <th className="px-4 py-3 font-medium">Phone</th>}
-              {isFieldEnabled('dob') && <th className="px-4 py-3 font-medium">DOB</th>}
-              <th className="px-4 py-3 font-medium">Rx Numbers</th>
-              <th className="px-4 py-3 font-medium">Tracking #</th>
-              {isFieldEnabled('carrier') && <th className="px-4 py-3 font-medium">Carrier</th>}
-              <th className="px-4 py-3 font-medium">Status</th>
-              {isFieldEnabled('redeliver') && <th className="px-4 py-3 font-medium">Redeliver</th>}
-              {isFieldEnabled('notes') && <th className="px-4 py-3 font-medium">Notes</th>}
+              {isColumnVisible('date') && <th className="px-4 py-3 font-medium w-28 sticky top-0 bg-white z-10" style={{ left: frozenLeft.date }}>Date</th>}
+              {isColumnVisible('patientName') && <th className="px-4 py-3 font-medium w-40 sticky top-0 bg-white z-10" style={{ left: frozenLeft.patientName }}>Patient Name</th>}
+              {isColumnVisible('address') && <th className="px-4 py-3 font-medium">Address</th>}
+              {isColumnVisible('phone') && <th className="px-4 py-3 font-medium">Phone</th>}
+              {isColumnVisible('dob') && <th className="px-4 py-3 font-medium">DOB</th>}
+              {isColumnVisible('rxNumbers') && <th className="px-4 py-3 font-medium">Rx Numbers</th>}
+              {isColumnVisible('tracking') && <th className="px-4 py-3 font-medium w-44 sticky top-0 bg-white z-10" style={{ left: frozenLeft.tracking }}>Tracking #</th>}
+              {isColumnVisible('carrier') && <th className="px-4 py-3 font-medium">Carrier</th>}
+              {isColumnVisible('status') && <th className="px-4 py-3 font-medium w-40 sticky top-0 bg-white z-10" style={{ left: frozenLeft.status }}>Status</th>}
+              {isColumnVisible('redeliver') && <th className="px-4 py-3 font-medium">Redeliver</th>}
+              {isColumnVisible('notes') && <th className="px-4 py-3 font-medium">Notes</th>}
               {!readOnly && <th className="px-4 py-3 font-medium text-right">Actions</th>}
             </tr>
           </thead>
@@ -378,6 +488,7 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Mobile cards */}

@@ -17,6 +17,15 @@ import AdminProtectedRoute from './components/AdminProtectedRoute'
 import AdminDashboardPage from './pages/AdminDashboardPage'
 import ArchivePage from './pages/ArchivePage'
 
+function PatientPlaceholder() {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <h2 className="text-xl font-semibold text-slate-900">Patient</h2>
+      <p className="mt-2 text-sm text-slate-500">Patient view coming soon.</p>
+    </div>
+  )
+}
+
 function OrgRedirect() {
   const { orgSlug, loading } = useAuth()
   if (loading) {
@@ -82,6 +91,7 @@ export default function App() {
               }
             >
               <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="patient" element={<PatientPlaceholder />} />
               <Route path="import" element={<ImportPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="archive" element={<ArchivePage />} />
