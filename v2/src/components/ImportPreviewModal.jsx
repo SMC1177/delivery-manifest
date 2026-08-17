@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ConflictReviewModal from './ConflictReviewModal'
 import { collection, doc, writeBatch, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
@@ -8,6 +9,7 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
   const { user, orgSlug } = useAuth()
   const addToast = useToast()
   const [importing, setImporting] = useState(false)
+  const [showConflictReview, setShowConflictReview] = useState(false)
 
   const { shipments, updates = [], skippedNoTracking, skippedDuplicate, totalRows, preview, unmappedColumns, pendingCreated = 0, trackingMerged = 0, needsReview = 0 } = result
 
@@ -180,12 +182,29 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
               <p className="text-green-700">{trackingMerged} tracking numbers matched to existing deliveries</p>
             )}
             {needsReview > 0 && (
+              <>
               <p className="text-red-700 font-semibold">{needsReview} need review — matched more than one delivery</p>
+              <button
+                type="button"
+                onClick={() => setShowConflictReview(true)}
+                className="mt-1 text-sm text-blue-600 hover:text-blue-800 underline"
+              >
+                Review conflicts
+              </button>
+              </>
             )}
             {unmappedColumns && unmappedColumns.length > 0 && (
               <p className="text-slate-500">{unmappedColumns.length} columns scrubbed (not stored)</p>
             )}
           </div>
+          {showConflictReview && (
+            <ConflictReviewModal
+              slug={orgSlug}
+              flagged={[]}
+              onClose={() => setShowConflictReview(false)}
+              onSaved={() => setShowConflictReview(false)}
+            />
+          )}
           {onRemap && (
             <button
               onClick={onRemap}

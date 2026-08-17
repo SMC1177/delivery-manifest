@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { useTextMessagingSettings } from '../hooks/useTextMessagingSettings'
-import { TEMPLATE_KEYS, TEMPLATE_LABELS, TEMPLATE_DEFAULTS } from '../lib/smsTemplateVars'
+import { TEMPLATE_KEYS, TEMPLATE_LABELS, TEMPLATE_DEFAULTS, TEMPLATE_LANGUAGES, TEMPLATE_DRAFT_TRANSLATIONS } from '../lib/smsTemplateVars'
 
 // Server-enforced requirements, keyed like TEMPLATE_KEYS. Mirrors
 // functions/sms-templates.js validateOptInInvite (case-insensitive substring
@@ -169,10 +169,86 @@ function TemplateTextarea({ label, stored, onCommit, requirement }) {
   )
 }
 
+
+// Slice 3 (w8-6 UI): second-language template row (es/fr). Commits to
+// settings.templatesByLang[lang][key] on blur. Drafts are surfaced ONLY via an
+// explicit "Use draft" action — never auto-saved, so operator approval is real.
+function SecondLanguageTemplateRow({ language, label, stored, draft, onCommit }) {
+  const langLabel = TEMPLATE_LANGUAGES.find((l) => l.value === language)?.label || language
+  const [value, setValue] = useState(stored)
+  const [focused, setFocused] = useState(false)
+  const baseRef = useRef(stored)
+  const committedRef = useRef(null)
+  const draftAppliedRef = useRef(false) // a draft was explicitly applied; don't clobber
+
+  useEffect(() => {
+    if (focused) return
+    if (draftAppliedRef.current) return // operator-approved draft: keep it until blur
+    if (committedRef.current !== null) {
+      if (stored === committedRef.current) {
+        baseRef.current = stored
+        committedRef.current = null
+      } else if (stored !== baseRef.current) {
+        setValue(stored)
+        baseRef.current = stored
+        committedRef.current = null
+      }
+      return
+    }
+    if (stored !== value) {
+      setValue(stored)
+      baseRef.current = stored
+    }
+  }, [stored, focused, value])
+
+  function handleBlur() {
+    setFocused(false)
+    const lastWritten = committedRef.current ?? baseRef.current
+    if (value !== lastWritten) {
+      committedRef.current = value
+      onCommit(value)
+    }
+    draftAppliedRef.current = false
+  }
+
+  function useDraft() {
+    draftAppliedRef.current = true
+    setValue(draft)
+    // Deliberately NO onCommit: revealing a draft is not approval.
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-0.5">
+        <div className="text-xs text-slate-500">{langLabel} — {label}</div>
+        {draft && stored === '' && (
+          <button
+            type="button"
+            onClick={useDraft}
+            className="text-xs text-blue-600 hover:text-blue-800 underline"
+          >
+            Use draft
+          </button>
+        )}
+      </div>
+      <textarea
+        rows={2}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={handleBlur}
+        aria-label={`${langLabel} — ${label}`}
+        className="w-full px-2 py-1 border rounded text-sm font-mono"
+      />
+    </div>
+  )
+}
+
 export default function TextMessagingSection({ slug, enabledFields, addToast, logAction, currentUid }) {
   const { data, loading, save } = useTextMessagingSettings(slug)
   const [editingCreds, setEditingCreds] = useState(false)
   const [savingCreds, setSavingCreds] = useState(false)
+  const [secondLanguage, setSecondLanguage] = useState('en') // slice 3: English + one additional language
   const [webhookLoading, setWebhookLoading] = useState(false)
   const [webhookError, setWebhookError] = useState(null)
 
@@ -380,16 +456,47 @@ export default function TextMessagingSection({ slug, enabledFields, addToast, lo
           </div>
 
           <div className="mb-3">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Message templates</label>
-            <div className="space-y-2">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm font-medium text-slate-700">Message templates</span>
+              <span className="text-xs text-slate-400">— English plus one additional language</span>
+            </div>
+            <div className="flex gap-1 mb-3 bg-slate-100 rounded-lg p-1 w-fit">
+              {TEMPLATE_LANGUAGES.map((lang) => (
+                <button
+                  key={lang.value}
+                  type="button"
+                  onClick={() => setSecondLanguage(lang.value === 'en' ? 'en' : lang.value)}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    secondLanguage === lang.value
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  {lang.label}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-4">
               {TEMPLATE_KEYS.map((k) => (
-                <TemplateTextarea
-                  key={k}
-                  label={TEMPLATE_LABELS[k]}
-                  stored={settings.templates?.[k] ?? TEMPLATE_DEFAULTS[k]}
-                  requirement={TEMPLATE_REQUIREMENTS[k]}
-                  onCommit={(v) => patch({ templates: { ...settings.templates, [k]: v } }, 'templates')}
-                />
+                <div key={k} className="border border-slate-200 rounded-lg p-3">
+                  <div className="grid gap-3">
+                    <TemplateTextarea
+                      label={`English — ${TEMPLATE_LABELS[k]}`}
+                      stored={settings.templates?.[k] ?? TEMPLATE_DEFAULTS[k]}
+                      requirement={TEMPLATE_REQUIREMENTS[k]}
+                      onCommit={(v) => patch({ templates: { ...settings.templates, [k]: v } }, 'templates')}
+                    />
+                    {secondLanguage !== 'en' && (
+                      <SecondLanguageTemplateRow
+                        language={secondLanguage}
+                        label={TEMPLATE_LABELS[k]}
+                        stored={settings.templatesByLang?.[secondLanguage]?.[k] ?? ''}
+                        draft={TEMPLATE_DRAFT_TRANSLATIONS[secondLanguage]?.[k] ?? ''}
+                        onCommit={(v) => patch({ templatesByLang: { ...(settings.templatesByLang || {}), [secondLanguage]: { ...(settings.templatesByLang?.[secondLanguage] || {}), [k]: v } } }, 'templatesByLang')}
+                      />
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
             <p className="text-xs text-slate-400 mt-1">

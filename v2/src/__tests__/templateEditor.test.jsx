@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import TextMessagingSection from '../components/TextMessagingSection'
 
 vi.mock('../hooks/useTextMessagingSettings', () => ({ useTextMessagingSettings: vi.fn() }))
@@ -118,5 +118,51 @@ describe('<TextMessagingSection /> template editor', () => {
     fireEvent.focus(delivered)
     fireEvent.change(delivered, { target: { value: 'Your order is on its way to you.' } })
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  // ---- SLICE 3 additions: EN + one language editor ----
+  it('shows a language toggle with English and a second language (es/fr)', () => {
+    renderSection()
+    expect(screen.getByRole('button', { name: /English/i })).toBeInTheDocument()
+    // second-language selector exists (es by default)
+    expect(screen.getByRole('button', { name: /Spanish/i })).toBeInTheDocument()
+  })
+
+  it('selecting the second language shows a second input per template row', () => {
+    renderSection()
+    fireEvent.click(screen.getByRole('button', { name: /Spanish/i }))
+    // EN input still present; a Spanish optInInvite input appears (empty or draft)
+    expect(screen.getByDisplayValue(TEMPLATES.optInInvite)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Spanish.*Opt-in invitation/i)).toBeInTheDocument()
+  })
+
+  it('editing the second-language input commits to templatesByLang on blur, not templates', () => {
+    mockSettings({ templatesByLang: { es: {} } })
+    renderSection()
+    fireEvent.click(screen.getByRole('button', { name: /Spanish/i }))
+    const esInvite = screen.getByLabelText(/Spanish.*Opt-in invitation/i)
+    esInvite.focus()
+    expect(document.activeElement).toBe(esInvite)
+    fireEvent.change(esInvite, { target: { value: '¡Hola de {{pharmacyName}}! Responde SÍ para recibir actualizaciones.' } })
+    esInvite.blur()
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0][0].templatesByLang.es.optInInvite).toContain('¡Hola de')
+  })
+
+  it('never auto-saves a draft — the draft is shown only via an explicit use-draft action', () => {
+    mockSettings({ templatesByLang: { es: {} } })
+    renderSection()
+    fireEvent.click(screen.getByRole('button', { name: /Spanish/i }))
+    // Draft text is NOT in the input until the operator clicks "Use draft";
+    // scope the button to the opt-in invitation row (every row shows one).
+    const esInvite = screen.getByLabelText(/Spanish.*Opt-in invitation/i)
+    expect(esInvite.value).toBe('')
+    const row = esInvite.closest('div')
+    const useDraftButton = within(row).getByRole('button', { name: /use draft/i })
+    fireEvent.click(useDraftButton)
+    // Re-query after the state update commits (the pre-click reference can be stale)
+    expect(screen.getByLabelText(/Spanish.*Opt-in invitation/i).value.length).toBeGreaterThan(0)
+    // No save happened from merely revealing the draft
+    expect(save).toHaveBeenCalledTimes(0)
   })
 })
