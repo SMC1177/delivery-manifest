@@ -188,3 +188,93 @@ describe('<TextMessagingSection /> template editor', () => {
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ defaultLanguage: 'fr' }))
   })
 })
+describe('<TextMessagingSection /> second-language save is visible', () => {
+  it('typing in the second-language input alone does not write (write-storm guard, es path)', () => {
+    mockSettings({ templatesByLang: { es: {} } })
+    renderSection()
+    fireEvent.click(screen.getByRole('button', { name: /Spanish/i }))
+    const esInvite = screen.getByLabelText(/Spanish.*Opt-in invitation/i)
+    fireEvent.focus(esInvite)
+    fireEvent.change(esInvite, { target: { value: 'Responde S' } })
+    fireEvent.change(esInvite, { target: { value: 'Responde SI' } })
+    fireEvent.change(esInvite, { target: { value: 'Responde SI para' } })
+    // No blur and no Save click: the draft must live locally, exactly as the
+    // English path does since 9ccae098.
+    expect(save).toHaveBeenCalledTimes(0)
+  })
+
+  // THE BUG. An operator has no way to know their translation was kept. There is
+  // no Save control, and the only writer fires on blur of a field the Use draft
+  // button filled for them - so the gesture nobody performs is the only one that
+  // persists. Approving a translation must be an explicit act with visible
+  // confirmation, because code is invisible to the person using the screen.
+  it('an explicit Save control persists the second-language template and confirms it to the operator', async () => {
+    const addToast = vi.fn()
+    mockSettings({ templatesByLang: { es: {} } })
+    render(
+      <TextMessagingSection
+        slug="acme"
+        enabledFields={['phone']}
+        addToast={addToast}
+        logAction={vi.fn()}
+        currentUid="uid-1"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Spanish/i }))
+    const esInvite = screen.getByLabelText(/Spanish.*Opt-in invitation/i)
+    fireEvent.change(esInvite, { target: { value: 'Responde SI para recibir actualizaciones.' } })
+
+    const row = esInvite.closest('div')
+    const saveButton = within(row).getByRole('button', { name: /save/i })
+    expect(saveButton).toBeTruthy()
+
+    fireEvent.click(saveButton)
+    await Promise.resolve()
+
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0][0].templatesByLang.es.optInInvite).toContain('Responde SI')
+
+    // The operator must SEE that it saved - a silent success is the defect.
+    expect(addToast).toHaveBeenCalled()
+    const toastText = addToast.mock.calls.map((c) => String(c[0])).join(' ')
+    expect(toastText).toMatch(/saved/i)
+  })
+})
+
+describe('<TextMessagingSection /> second-language save confirms on the real gesture', () => {
+  // A mouse click on Save fires focusout on the textarea BEFORE the click lands,
+  // so the blur path commits first. If the confirmation is tied to whether the
+  // button handler did the write, the operator sees nothing - the original defect,
+  // reproduced by its own fix and invisible to a green suite.
+  it('confirms to the operator when blur commits first, as a real click does', async () => {
+    const addToast = vi.fn()
+    mockSettings({ templatesByLang: { es: {} } })
+    render(
+      <TextMessagingSection
+        slug="acme"
+        enabledFields={['phone']}
+        addToast={addToast}
+        logAction={vi.fn()}
+        currentUid="uid-1"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Spanish/i }))
+    const esInvite = screen.getByLabelText(/Spanish.*Opt-in invitation/i)
+    fireEvent.focus(esInvite)
+    fireEvent.change(esInvite, { target: { value: 'Responde SI para recibir actualizaciones.' } })
+
+    // The browser blurs the field before the click reaches the button.
+    fireEvent.blur(esInvite)
+    await Promise.resolve()
+
+    // Exactly one write, whichever path performed it.
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0][0].templatesByLang.es.optInInvite).toContain('Responde SI')
+
+    // And the operator must SEE it, because a save they cannot observe is
+    // indistinguishable from one that never happened.
+    expect(addToast).toHaveBeenCalled()
+    const toastText = addToast.mock.calls.map((c) => String(c[0])).join(' ')
+    expect(toastText).toMatch(/saved/i)
+  })
+})

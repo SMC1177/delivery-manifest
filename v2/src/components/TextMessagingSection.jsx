@@ -173,13 +173,14 @@ function TemplateTextarea({ label, stored, onCommit, requirement }) {
 // Slice 3 (w8-6 UI): second-language template row (es/fr). Commits to
 // settings.templatesByLang[lang][key] on blur. Drafts are surfaced ONLY via an
 // explicit "Use draft" action — never auto-saved, so operator approval is real.
-function SecondLanguageTemplateRow({ language, label, stored, draft, onCommit }) {
+function SecondLanguageTemplateRow({ language, label, stored, draft, onCommit, addToast }) {
   const langLabel = TEMPLATE_LANGUAGES.find((l) => l.value === language)?.label || language
   const [value, setValue] = useState(stored)
   const [focused, setFocused] = useState(false)
   const baseRef = useRef(stored)
   const committedRef = useRef(null)
   const draftAppliedRef = useRef(false) // a draft was explicitly applied; don't clobber
+  const [lastWrittenValue, setLastWrittenValue] = useState(stored) // last value written or seeded — state, not ref, so render sees fresh data
 
   useEffect(() => {
     if (focused) return
@@ -188,16 +189,19 @@ function SecondLanguageTemplateRow({ language, label, stored, draft, onCommit })
       if (stored === committedRef.current) {
         baseRef.current = stored
         committedRef.current = null
+        setLastWrittenValue(stored)
       } else if (stored !== baseRef.current) {
         setValue(stored)
         baseRef.current = stored
         committedRef.current = null
+        setLastWrittenValue(stored)
       }
       return
     }
     if (stored !== value) {
       setValue(stored)
       baseRef.current = stored
+      setLastWrittenValue(stored)
     }
   }, [stored, focused, value])
 
@@ -206,7 +210,7 @@ function SecondLanguageTemplateRow({ language, label, stored, draft, onCommit })
     const lastWritten = committedRef.current ?? baseRef.current
     if (value !== lastWritten) {
       committedRef.current = value
-      onCommit(value)
+      commitAndConfirm(value)
     }
     draftAppliedRef.current = false
   }
@@ -217,24 +221,59 @@ function SecondLanguageTemplateRow({ language, label, stored, draft, onCommit })
     // Deliberately NO onCommit: revealing a draft is not approval.
   }
 
+  // Explicit operator approval: commit the CURRENT local value through the same
+  // onCommit path the blur handler uses — no second write path. Idempotent: if a
+  // blur already committed the same value, this is a no-op, so blur+click never
+  // double-writes. Only a real commit is confirmed to the operator.
+  function saveNow() {
+    commitAndConfirm(value)
+  }
+
+  // Nothing pending when the local value matches what we last wrote/seeded.
+  const isDirty = value !== lastWrittenValue
+
+  // Confirmation belongs to the COMMIT, not to the button. A real click blurs the
+  // field first, so the blur path is often what actually persists; tying the toast
+  // to the button handler means the operator clicks Save and sees nothing. Both
+  // paths route through here, and a no-op neither writes nor confirms.
+  function commitAndConfirm(next) {
+    if (next === lastWrittenValue) return
+    onCommit(next)
+    setLastWrittenValue(next)
+    addToast?.('Second-language template saved')
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-0.5">
         <div className="text-xs text-slate-500">{langLabel} — {label}</div>
         {draft && stored === '' && (
-          <button
-            type="button"
-            onClick={useDraft}
-            className="text-xs text-blue-600 hover:text-blue-800 underline"
-          >
-            Use draft
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={useDraft}
+              className="text-xs text-blue-600 hover:text-blue-800 underline"
+            >
+              Use draft
+            </button>
+            <button
+              type="button"
+              onClick={saveNow}
+              disabled={!isDirty}
+              className="text-xs text-blue-700 hover:text-blue-900 underline disabled:text-slate-400 disabled:no-underline"
+            >
+              Save
+            </button>
+          </>
         )}
       </div>
       <textarea
         rows={2}
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => {
+          setFocused(true) // typing implies focus: keep the sync effect from clobbering the in-progress draft
+          setValue(e.target.value)
+        }}
         onFocus={() => setFocused(true)}
         onBlur={handleBlur}
         aria-label={`${langLabel} — ${label}`}
@@ -507,6 +546,7 @@ export default function TextMessagingSection({ slug, enabledFields, addToast, lo
                         label={TEMPLATE_LABELS[k]}
                         stored={settings.templatesByLang?.[secondLanguage]?.[k] ?? ''}
                         draft={TEMPLATE_DRAFT_TRANSLATIONS[secondLanguage]?.[k] ?? ''}
+                        addToast={addToast}
                         onCommit={(v) => patch({ templatesByLang: { ...(settings.templatesByLang || {}), [secondLanguage]: { ...(settings.templatesByLang?.[secondLanguage] || {}), [k]: v } } }, 'templatesByLang')}
                       />
                     )}
