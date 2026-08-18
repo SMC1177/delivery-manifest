@@ -243,6 +243,38 @@ export function applyMapping(rows, mapping) {
       date: get('date') ? normalizeDate(get('date')) : (get('dateFilled') ? normalizeDate(get('dateFilled')) : ''),
       refillNumber: get('refillNumber') != null ? String(get('refillNumber')).trim() : '',
       notes: get('notes') ? String(get('notes')).trim() : '',
+
+      // The extended pharmacy export. These are mapped in Settings exactly like
+      // the ten above, but until now applyMapping had no slot for them, so
+      // ImportPreviewModal's `?? ''` always fell through and every one landed on
+      // the document as an empty string. Unmapped fields still resolve to ''
+      // because get() returns undefined, so nothing changes for an org that
+      // maps none of them.
+      facilityName: get('facilityName') ? String(get('facilityName')).trim() : '',
+      dateWritten: get('dateWritten') ? normalizeDate(get('dateWritten')) : '',
+      dateFilled: get('dateFilled') ? normalizeDate(get('dateFilled')) : '',
+      effectiveDate: get('effectiveDate') ? normalizeDate(get('effectiveDate')) : '',
+      refillDate: get('refillDate') ? normalizeDate(get('refillDate')) : '',
+      drugDescription: get('drugDescription') ? String(get('drugDescription')).trim() : '',
+      drugGpi: get('drugGpi') ? String(get('drugGpi')).trim() : '',
+      ndc: get('ndc') ? String(get('ndc')).trim() : '',
+      // != null, not truthiness: a legitimate 0 quantity, 0 refills remaining or
+      // $0 copay is real data. Truthiness turns it into '' — the same defect
+      // already fixed once at refillNumber above.
+      quantityDispensed: get('quantityDispensed') != null ? String(get('quantityDispensed')).trim() : '',
+      daysSupply: get('daysSupply') != null ? String(get('daysSupply')).trim() : '',
+      prescriptionLength: get('prescriptionLength') != null ? String(get('prescriptionLength')).trim() : '',
+      refillsAuthorized: get('refillsAuthorized') != null ? String(get('refillsAuthorized')).trim() : '',
+      refillsRemaining: get('refillsRemaining') != null ? String(get('refillsRemaining')).trim() : '',
+      awpCost: get('awpCost') != null ? String(get('awpCost')).trim() : '',
+      copayAmount: get('copayAmount') != null ? String(get('copayAmount')).trim() : '',
+      deliveryMethod: get('deliveryMethod') ? String(get('deliveryMethod')).trim() : '',
+      orderDescription: get('orderDescription') ? String(get('orderDescription')).trim() : '',
+      prescriberFirstName: get('prescriberFirstName') ? String(get('prescriberFirstName')).trim() : '',
+      prescriberLastName: get('prescriberLastName') ? String(get('prescriberLastName')).trim() : '',
+      prescriberAddress1: get('prescriberAddress1') ? String(get('prescriberAddress1')).trim() : '',
+      prescriberCity: get('prescriberCity') ? String(get('prescriberCity')).trim() : '',
+      prescriberState: get('prescriberState') ? String(get('prescriberState')).trim() : '',
     }
   })
 }
