@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { buildProfileSections } from '../utils/patientGrouping'
 import { useSmsContact } from '../hooks/useSmsContact'
+import { getTrackingUrl } from '../lib/carriers'
 
 // Language spoken by the patient, from their sms contact record.
 const LANGUAGE_LABELS = {
@@ -34,6 +35,31 @@ const TABS = [
   { id: 'messaging', label: 'Messaging & Consent' },
   { id: 'notes', label: 'Notes' },
 ]
+
+// Tracking line for a shipment row. getTrackingUrl returns null when the
+// carrier is unknown OR the number is empty — a dead link is worse than none,
+// so a null URL renders the number as plain text (or nothing at all when the
+// number is empty). The URL always comes from getTrackingUrl, never hardcoded.
+function renderTracking(shipment) {
+  const trackingNumber = shipment.trackingNumber
+  const url = getTrackingUrl(shipment.carrier, trackingNumber)
+  if (url) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-sm text-slate-600 underline"
+      >
+        {trackingNumber}
+      </a>
+    )
+  }
+  if (trackingNumber) {
+    return <p className="text-sm text-slate-600">{trackingNumber}</p>
+  }
+  return null
+}
 
 export default function PatientProfile({ patient, shipments, slug }) {
   const [activeTab, setActiveTab] = useState('prescriptions')
@@ -98,6 +124,7 @@ export default function PatientProfile({ patient, shipments, slug }) {
                 {(shipment.rxNumbers ?? []).join(', ')} · {shipment.date ?? '—'}
               </p>
               <p className="text-sm text-slate-600">Status: {shipment.status ?? 'unknown'}</p>
+              {renderTracking(shipment)}
             </li>
           ))}
         </ul>

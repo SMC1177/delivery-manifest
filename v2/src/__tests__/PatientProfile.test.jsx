@@ -156,3 +156,70 @@ describe('PatientProfile', () => {
     expect(screen.getByText('Call before delivery')).toBeInTheDocument()
   })
 })
+
+// Tracking numbers on the patient profile. Fixtures mirror production: PatientPage
+// passes whole shipment docs through, and trackingNumber + carrier are present on
+// 200/200 sampled documents at both organisations.
+describe('<PatientProfile /> tracking number is visible and clickable', () => {
+  const TRACKED = [
+    {
+      id: 'ship-fedex',
+      date: '2026-06-04',
+      rxNumbers: ['1289900'],
+      status: 'delivered',
+      carrier: 'fedex',
+      trackingNumber: '535650304919',
+    },
+    {
+      id: 'ship-ups',
+      date: '2026-05-01',
+      rxNumbers: ['1233900'],
+      status: 'shipped',
+      carrier: 'ups',
+      trackingNumber: '1Z0K1J03A433959948',
+    },
+    {
+      // 42 of 900 sampled Trident rows are exactly this: carrier 'other', no number.
+      id: 'ship-untracked',
+      date: '2026-04-01',
+      rxNumbers: ['1214000'],
+      status: 'shipped',
+      carrier: 'other',
+      trackingNumber: '',
+    },
+  ]
+
+  function renderTracked() {
+    return render(<PatientProfile patient={PATIENT} shipments={TRACKED} slug="acme" />)
+  }
+
+  function carrierLinks() {
+    return screen
+      .getAllByRole('link')
+      .filter((a) => /ups\.com|fedex\.com/.test(a.getAttribute('href') || ''))
+  }
+
+  it('shows a FedEx tracking number as a link that opens FedEx', () => {
+    renderTracked()
+    const link = screen.getByRole('link', { name: /535650304919/ })
+    expect(link.getAttribute('href')).toContain('fedex.com')
+    expect(link.getAttribute('href')).toContain('535650304919')
+  })
+
+  // The URL must come from the row's carrier. DeliveryTable.jsx hardcodes ups.com
+  // for every carrier and produces broken FedEx links; this row must not repeat it.
+  it('derives the URL from the row carrier — a UPS row opens UPS, not FedEx', () => {
+    renderTracked()
+    const link = screen.getByRole('link', { name: /1Z0K1J03A433959948/ })
+    expect(link.getAttribute('href')).toContain('ups.com')
+    expect(link.getAttribute('href')).not.toContain('fedex.com')
+  })
+
+  // A dead link is worse than no link: the operator clicks it, gets nothing, and
+  // concludes the parcel is untraceable.
+  it('renders no link for a shipment with no tracking number', () => {
+    renderTracked()
+    expect(carrierLinks()).toHaveLength(2)
+    expect(screen.queryByRole('link', { name: /1214000/ })).toBeNull()
+  })
+})
