@@ -4,6 +4,7 @@ import { normalizePhone, maskPhone } from './lib/phoneNormalize.js'
 import { renderTemplate } from './sms-templates.js'
 import { sendRingCentralSms } from './ringcentral-sms.js'
 import { getRingCentralCredsForOrg } from './lib/rcCredentials.js'
+import { isWithinSendWindow } from './sms-rate-limit.js'
 
 const OPT_IN_WORDS = new Set(['YES', 'Y', 'START', 'SI', 'OUI'])
 const OPT_OUT_WORDS = new Set(['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'PARE', 'ARRET', 'ALTO', 'BAJA', 'DETENER', 'PARAR', 'NO'])
@@ -108,7 +109,18 @@ export const ringcentralInbound = onRequest(async (req, res) => {
       details: {}, // intentionally no body — PHI safety
       timestamp: FieldValue.serverTimestamp(),
     })
-    if (settings.autoReplyToNonKeyword && settings.templates?.nonKeywordRedirect) {
+    // B.5: outside the operator's 8am-7pm Central window the courtesy reply is
+    // SUPPRESSED, not deferred - an auto-reply has no tracking number, so it cannot
+    // enter the queue at all. The inbound itself is already audited above; this
+    // records that a reply was withheld so the suppression is never invisible.
+    if (settings.autoReplyToNonKeyword && settings.templates?.nonKeywordRedirect && !isWithinSendWindow({ now: new Date() })) {
+      await auditRef.add({
+        action: 'sms.auto_reply_suppressed',
+        targetId: maskPhone(phone),
+        details: { reason: 'non_keyword', cause: 'outside_send_window' },
+        timestamp: FieldValue.serverTimestamp(),
+      })
+    } else if (settings.autoReplyToNonKeyword && settings.templates?.nonKeywordRedirect) {
       let autoReplyCreds
       try {
         autoReplyCreds = await getRingCentralCredsForOrg(orgSlug)
@@ -167,7 +179,17 @@ export const ringcentralInbound = onRequest(async (req, res) => {
   })
 
   // Optional auto-confirm
-  if (settings.autoReplyOnYesStop) {
+  // B.5: the CONFIRMATION waits for the window; the CONSENT does not. The contact
+  // write above has already recorded optIn, so a patient who texts STOP at 3am is
+  // opted out at 3am - only the courtesy text is withheld.
+  if (settings.autoReplyOnYesStop && !isWithinSendWindow({ now: new Date() })) {
+    await auditRef.add({
+      action: 'sms.auto_reply_suppressed',
+      targetId: maskPhone(phone),
+      details: { reason: optIn ? 'opt_in_confirm' : 'opt_out_confirm', cause: 'outside_send_window' },
+      timestamp: FieldValue.serverTimestamp(),
+    })
+  } else if (settings.autoReplyOnYesStop) {
     let templateKey = optIn ? 'optInConfirm' : 'optOutConfirm'
     // Send the opt-out confirmation in the patient's reply language when a
     // localized template exists (suffix convention: optOutConfirmEs / optOutConfirmFr).

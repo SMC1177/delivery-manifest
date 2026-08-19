@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { _clearTokenCache } from '../ringcentral-auth.js'
 
 function makeFirestore({ docs = {} } = {}) {
@@ -34,7 +34,19 @@ vi.mock('../lib/rcCredentials.js', () => ({
   getRingCentralCredsForOrg: vi.fn(async () => _mockCreds),
 }))
 
-beforeEach(() => { _clearTokenCache(); vi.restoreAllMocks() })
+// B.5 made this handler time-dependent: auto-replies are suppressed outside the
+// operator's 8am-7pm Central window. Without a pinned clock the send-path tests
+// below would pass during business hours and fail overnight, which is worse than
+// failing outright because it hides. Every test therefore starts at midday
+// Central; the B.5 window cases set their own time and override this.
+beforeEach(() => {
+  _clearTokenCache()
+  vi.restoreAllMocks()
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-06-15T17:00:00Z')) // 12:00 America/Chicago
+})
+
+afterEach(() => { vi.useRealTimers() })
 
 function makeReq({ method = 'POST', query = { org: 'acme' }, headers = { 'x-webhook-token': 'TOK' }, body = {} } = {}) {
   return {
@@ -169,6 +181,100 @@ describe('ringcentralInbound', () => {
     }), res)
     expect(res._body).toBe('Duplicate')
     expect(docs['organizations/acme/smsContacts/+12815550200']).toBeUndefined()
+  })
+
+  // ---- B.5: the operator's 8am-7pm Central send window ----
+  // The drain is confined by its cron and a staff send goes through the queue, so
+  // the inbound webhook is the only path left that reaches the provider directly.
+  // Outside the window the courtesy reply is SUPPRESSED, never deferred: an
+  // auto-reply has no tracking number, so it cannot enter the queue at all.
+
+  it('does NOT auto-reply to a non-keyword text at 3am Central, and audits the suppression', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-15T08:00:00Z')) // 03:00 America/Chicago
+    try {
+      const docs = {
+        'organizations/acme/settings/textMessaging': { ...baseSettings, autoReplyToNonKeyword: true },
+        'organizations/acme': { name: 'Acme RX', contactPhone: '+18005551234' },
+      }
+      const fs = makeFirestore({ docs })
+      globalThis.__testFirestore = fs
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 3600 }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'reply-x' }) })
+
+      const { ringcentralInbound } = await import('../sms-inbound.js')
+      await ringcentralInbound(makeReq({
+        body: { body: { from: { phoneNumber: '+12815550201' }, subject: 'where is my order', messageId: 'rc-w1' } },
+      }), makeRes())
+
+      expect(global.fetch, 'no provider call may happen outside the send window').not.toHaveBeenCalled()
+      expect(
+        fs._audit.find((e) => e.data.action === 'sms.auto_reply_suppressed'),
+        'a withheld reply must be audited, otherwise the suppression is invisible',
+      ).toBeDefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('DOES auto-reply to the same non-keyword text at noon Central', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-15T17:00:00Z')) // 12:00 America/Chicago
+    try {
+      const docs = {
+        'organizations/acme/settings/textMessaging': { ...baseSettings, autoReplyToNonKeyword: true },
+        'organizations/acme': { name: 'Acme RX', contactPhone: '+18005551234' },
+      }
+      const fs = makeFirestore({ docs })
+      globalThis.__testFirestore = fs
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 3600 }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'reply-y' }) })
+
+      const { ringcentralInbound } = await import('../sms-inbound.js')
+      await ringcentralInbound(makeReq({
+        body: { body: { from: { phoneNumber: '+12815550202' }, subject: 'where is my order', messageId: 'rc-w2' } },
+      }), makeRes())
+
+      expect(
+        fs._audit.find((e) => e.data.action === 'sms.auto_reply_sent'),
+        'the gate must be time-based, not a blanket disable',
+      ).toBeDefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('records the opt-out at 3am even though the STOP confirmation is suppressed', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-15T08:00:00Z')) // 03:00 America/Chicago
+    try {
+      const docs = {
+        'organizations/acme/settings/textMessaging': { ...baseSettings, autoReplyOnYesStop: true },
+        'organizations/acme': { name: 'Acme RX' },
+      }
+      const fs = makeFirestore({ docs })
+      globalThis.__testFirestore = fs
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 3600 }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'reply-z' }) })
+
+      const { ringcentralInbound } = await import('../sms-inbound.js')
+      await ringcentralInbound(makeReq({
+        body: { body: { from: { phoneNumber: '+12815550203' }, subject: 'STOP', messageId: 'rc-w3' } },
+      }), makeRes())
+
+      const contact = Object.entries(fs._docs).find(([k]) => k.includes('/smsContacts/'))
+      expect(contact, 'the contact document must be written regardless of the hour').toBeDefined()
+      expect(
+        contact[1].optIn,
+        'consent is NEVER deferred - only the confirmation text waits for the window',
+      ).toBe(false)
+      expect(global.fetch, 'the confirmation itself must be withheld at 3am').not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('auto-replies on YES when autoReplyOnYesStop=true', async () => {

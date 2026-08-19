@@ -49,6 +49,29 @@ export function shouldHoldForWindow({ now, createdAt }) {
  * Atomic check-and-increment against the per-org daily cap.
  * Returns { allowed: boolean, current: number, cap: number }.
  */
+/**
+ * Is `now` inside the operator's send window? 8am through 7pm America/Chicago.
+ *
+ * The cron already confines the scheduled drain to these hours, and a staff send
+ * goes through the queue and inherits them. This exists for the ONE path that
+ * reaches the provider directly: the inbound webhook's auto-replies, which before
+ * B.5 could fire a STOP confirmation at 3am.
+ *
+ * Same Central Intl computation as todayKey and shouldHoldForWindow, deliberately,
+ * so the three time rules in this module cannot drift apart. hour 18 is the six
+ * o'clock hour, so the window closes at 19:00 exactly.
+ */
+export function isWithinSendWindow({ now }) {
+  const hour = Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: CENTRAL_TZ,
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).format(now),
+  )
+  return hour >= 8 && hour <= 18
+}
+
 export async function checkAndIncrementRateLimit({ firestore, orgSlug, cap, now = new Date() }) {
   const key = todayKey(now)
   const path = `organizations/${orgSlug}/settings/textMessaging/usage/${key}`
