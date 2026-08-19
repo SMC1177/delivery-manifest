@@ -9,13 +9,12 @@ import { enqueue } from './lib/smsQueue.js'
  * status outside it enqueues nothing — so changing the membership here does
  * not require touching a single test.
  *
- * 'pending' and 'archived' are absent on purpose. Pending is the state a row
+ * 'delivered', 'pending' and 'archived' are absent on purpose. Pending is the state a row
  * is created in, and archived only means the row was filed; neither is a
  * delivery event the patient should hear about.
  */
 export const STATUS_TEMPLATE_KEYS = {
   shipped: 'shipped',
-  delivered: 'delivered',
   exception: 'exception',
 }
 

@@ -61,10 +61,10 @@ const fire = (firestore, before, after) =>
 describe('onShipmentStatusChange', () => {
   it('enqueues exactly one notification when the status enters a notifying state', async () => {
     const { firestore, notifications } = makeMockFirestore()
-    await fire(firestore, shipment({ status: 'pending' }), shipment({ status: 'delivered' }))
+    await fire(firestore, shipment({ status: 'pending' }), shipment({ status: 'shipped' }))
     expect(notifications.size).toBe(1)
     const [item] = [...notifications.values()]
-    expect(item.templateKey).toBe(STATUS_TEMPLATE_KEYS.delivered)
+    expect(item.templateKey).toBe(STATUS_TEMPLATE_KEYS.shipped)
     expect(item.trackingNumber).toBe(TRACK)
     expect(item.status).toBe('pending')
   })
@@ -72,7 +72,7 @@ describe('onShipmentStatusChange', () => {
   it('still yields one notification when the same transition is observed twice', async () => {
     const { firestore, notifications } = makeMockFirestore()
     const before = shipment({ status: 'pending' })
-    const after = shipment({ status: 'delivered' })
+    const after = shipment({ status: 'shipped' })
     await fire(firestore, before, after)
     await fire(firestore, before, after)
     expect(notifications.size).toBe(1)
@@ -80,7 +80,7 @@ describe('onShipmentStatusChange', () => {
 
   it('carries the shipment id so the whole box can be batched into one message', async () => {
     const { firestore, notifications } = makeMockFirestore()
-    await fire(firestore, shipment({ status: 'pending' }), shipment({ status: 'delivered' }))
+    await fire(firestore, shipment({ status: 'pending' }), shipment({ status: 'shipped' }))
     const [item] = [...notifications.values()]
     expect(item.shipmentIds).toEqual(['s_1'])
   })
@@ -89,16 +89,31 @@ describe('onShipmentStatusChange', () => {
     const { firestore, notifications } = makeMockFirestore()
     await fire(
       firestore,
-      shipment({ status: 'delivered', patientName: 'John Doe' }),
-      shipment({ status: 'delivered', patientName: 'Jonathan Doe' })
+      shipment({ status: 'shipped', patientName: 'John Doe' }),
+      shipment({ status: 'shipped', patientName: 'Jonathan Doe' })
     )
     expect(notifications.size).toBe(0)
   })
 
   it('enqueues nothing when the status did not change at all', async () => {
     const { firestore, notifications } = makeMockFirestore()
-    await fire(firestore, shipment({ status: 'delivered' }), shipment({ status: 'delivered' }))
+    await fire(firestore, shipment({ status: 'shipped' }), shipment({ status: 'shipped' }))
     expect(notifications.size).toBe(0)
+  })
+
+  it('enqueues nothing when a tracked row flips to delivered — the refresh path', async () => {
+    // The structural case pins the map; this one drives the path a carrier
+    // status refresh actually takes. Trident's audit log records one
+    // tracking.status_refresh on 2026-08-18 that checked 3,843 shipments and
+    // updated 3,624, and 1,533 delivered notifications appeared in the queue
+    // inside the same 32 seconds — every one a row flipping to delivered with
+    // a tracking number already on it. This is that transition.
+    const { firestore, notifications } = makeMockFirestore()
+    await fire(firestore, shipment({ status: 'pending' }), shipment({ status: 'delivered' }))
+    expect(
+      notifications.size,
+      'a delivered status must never enqueue a notification, however it is reached',
+    ).toBe(0)
   })
 
   it('enqueues nothing for a status that is not in the notifying map', async () => {
@@ -112,7 +127,7 @@ describe('onShipmentStatusChange', () => {
     await fire(
       firestore,
       shipment({ status: 'pending', trackingNumber: '' }),
-      shipment({ status: 'delivered', trackingNumber: '' })
+      shipment({ status: 'shipped', trackingNumber: '' })
     )
     expect(notifications.size).toBe(0)
   })
@@ -121,8 +136,8 @@ describe('onShipmentStatusChange', () => {
     const { firestore, notifications } = makeMockFirestore()
     await fire(
       firestore,
-      shipment({ status: 'delivered', trackingNumber: '' }),
-      shipment({ status: 'delivered', trackingNumber: TRACK })
+      shipment({ status: 'shipped', trackingNumber: '' }),
+      shipment({ status: 'shipped', trackingNumber: TRACK })
     )
     expect(notifications.size).toBe(1)
     const [item] = [...notifications.values()]
@@ -131,8 +146,8 @@ describe('onShipmentStatusChange', () => {
 
   it('does not enqueue twice when the tracking number arrives and is then re-imported', async () => {
     const { firestore, notifications } = makeMockFirestore()
-    const untracked = shipment({ status: 'delivered', trackingNumber: '' })
-    const tracked = shipment({ status: 'delivered', trackingNumber: TRACK })
+    const untracked = shipment({ status: 'shipped', trackingNumber: '' })
+    const tracked = shipment({ status: 'shipped', trackingNumber: TRACK })
     await fire(firestore, untracked, tracked)
     await fire(firestore, tracked, tracked)
     expect(notifications.size).toBe(1)
@@ -151,6 +166,16 @@ describe('STATUS_TEMPLATE_KEYS', () => {
   it('does not notify on a status that only means the row was filed', () => {
     expect(STATUS_TEMPLATE_KEYS.archived).toBeUndefined()
     expect(STATUS_TEMPLATE_KEYS.pending).toBeUndefined()
+  })
+
+  it('a delivered status generates no message — the operator\'s rule', () => {
+    // "Delivered status should never send an sms." Measured why it matters:
+    // Trident holds 19,399 delivered shipments across 3,106 distinct tracking
+    // numbers with a phone, and 1,589 delivered notifications were already
+    // sitting in its queue — 1,533 of them built inside 32 seconds on
+    // 2026-08-18 by a single click of refresh tracking. Only settings.enabled
+    // being false stopped them reaching a patient.
+    expect(STATUS_TEMPLATE_KEYS.delivered).toBeUndefined()
   })
 
   it('w0-1: in_transit generates no message — it tells a patient nothing actionable', () => {
