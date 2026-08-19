@@ -951,7 +951,7 @@ export const onShipmentStatusChanged = onDocumentUpdated(
 // failure cannot starve the rest.
 export const scheduledSmsQueueDrain = onSchedule(
   {
-    schedule: '*/5 * * * *',
+    schedule: '*/5 8-18 * * *',
     timeZone: 'America/Chicago',
     timeoutSeconds: 300,
   },

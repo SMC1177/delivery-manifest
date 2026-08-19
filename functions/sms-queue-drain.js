@@ -1,5 +1,5 @@
 import { claimBatch, complete, fail, release } from './lib/smsQueue.js'
-import { checkAndIncrementRateLimit } from './sms-rate-limit.js'
+import { checkAndIncrementRateLimit, shouldHoldForWindow } from './sms-rate-limit.js'
 
 const DEFAULT_LIMIT = 25
 
@@ -21,7 +21,7 @@ export async function drainQueue({
   limit = DEFAULT_LIMIT,
 }) {
   const claimed = await claimBatch({ firestore, orgSlug, limit, now, workerId })
-  const summary = { claimed: claimed.length, sent: 0, failed: 0, releasedForCap: 0 }
+  const summary = { claimed: claimed.length, sent: 0, failed: 0, releasedForCap: 0, heldForWindow: 0 }
   if (claimed.length === 0) return summary
 
   let capReached = false
@@ -38,6 +38,16 @@ export async function drainQueue({
     if (capReached) {
       await release(ident)
       summary.releasedForCap += 1
+      continue
+    }
+
+    // The 8 o'clock hour is reserved for prior-day items. A same-day item is put
+    // back rather than sent: release() keeps its queue place and costs it nothing
+    // (only fail() increments attempts), and holding BEFORE the cap check means a
+    // held item does not consume one of the day's 250 sends.
+    if (shouldHoldForWindow({ now, createdAt: item.createdAt })) {
+      await release(ident)
+      summary.heldForWindow += 1
       continue
     }
 

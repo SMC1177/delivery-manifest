@@ -113,6 +113,7 @@ export async function claimBatch({
     .collection(queueCollectionPath(org))
     .where('status', 'in', CLAIMABLE_STATUSES)
     .orderBy('nextAttemptAt')
+    .orderBy('createdAt')
     .limit(limit)
     .get()
 

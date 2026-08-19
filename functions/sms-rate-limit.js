@@ -10,7 +10,12 @@ export function todayKey(date = new Date(), tz = CENTRAL_TZ) {
     month: '2-digit',
     day: '2-digit',
   })
-  return fmt.format(date) // en-CA gives YYYY-MM-DD
+  // Queue items store timestamps as ISO STRINGS (lib/smsQueue.js writes
+  // now.toISOString()), so callers legitimately pass a string here. Intl's
+  // format() throws RangeError on anything that is not a Date — measured
+  // 2026-08-19, when it crashed the whole drain on the first real item.
+  const d = date instanceof Date ? date : new Date(date)
+  return fmt.format(d) // en-CA gives YYYY-MM-DD
 }
 
 /**
@@ -31,7 +36,13 @@ export function shouldHoldForWindow({ now, createdAt }) {
       hourCycle: 'h23',
     }).format(now),
   )
-  return hour === 8 && todayKey(createdAt) === todayKey(now)
+  // An unparseable createdAt must not take the whole org's drain down with it.
+  // The cron already confines every send to 08:00-18:55 Central, so failing
+  // OPEN here cannot produce an out-of-hours message — it only forfeits the
+  // prior-day reservation for one malformed row.
+  const created = createdAt instanceof Date ? createdAt : new Date(createdAt)
+  if (Number.isNaN(created.getTime())) return false
+  return hour === 8 && todayKey(created) === todayKey(now)
 }
 
 /**

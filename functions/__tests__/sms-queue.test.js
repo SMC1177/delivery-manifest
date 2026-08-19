@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { enqueue, claimBatch, complete, fail, release } from '../lib/smsQueue.js'
 import { drainQueue } from '../sms-queue-drain.js'
+import { readFileSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /**
  * Injected-firestore mock, same shape as sms-ledger.test.js:
@@ -180,10 +183,10 @@ function makeQueryableFirestore() {
   firestore.collection = vi.fn((collectionPath) => {
     const filters = []
     let max = Infinity
-    let order = null
+    const order = []
     const query = {
       where: vi.fn((field, op, value) => { filters.push({ field, op, value }); return query }),
-      orderBy: vi.fn((field, direction = 'asc') => { order = { field, direction }; return query }),
+      orderBy: vi.fn((field, direction = 'asc') => { order.push({ field, direction }); return query }),
       limit: vi.fn((n) => { max = n; return query }),
       get: vi.fn(async () => {
         const docs = []
@@ -194,14 +197,18 @@ function makeQueryableFirestore() {
           const matches = filters.every((f) => (f.op === '==' ? data[f.field] === f.value : true))
           if (matches) docs.push({ id, ref: firestore.doc(docPath), data: () => data })
         }
-        if (order) {
-          docs.sort((a, b) => {
-            const av = a.data()[order.field] ?? ''
-            const bv = b.data()[order.field] ?? ''
-            if (av === bv) return 0
-            return (av < bv ? -1 : 1) * (order.direction === 'desc' ? -1 : 1)
-          })
-        }
+        // ONE comparator walking the order fields in sequence. A sort-per-field
+        // loop is wrong: successive stable sorts make the LAST field primary, so
+        // chaining .orderBy('nextAttemptAt').orderBy('createdAt') silently sorted
+        // by createdAt first — the inverse of the real query.
+        docs.sort((a, b) => {
+          for (const { field, direction } of order) {
+            const av = a.data()[field] ?? ''
+            const bv = b.data()[field] ?? ''
+            if (av !== bv) return (av < bv ? -1 : 1) * (direction === 'desc' ? -1 : 1)
+          }
+          return 0
+        })
         const page = docs.slice(0, max)
         return { docs: page, size: page.length, empty: page.length === 0 }
       }),
@@ -701,7 +708,7 @@ describe('drainQueue', () => {
     })
 
     expect(sendMessage).not.toHaveBeenCalled()
-    expect(result).toEqual({ claimed: 0, sent: 0, failed: 0, releasedForCap: 0 })
+    expect(result).toEqual({ claimed: 0, sent: 0, failed: 0, releasedForCap: 0, heldForWindow: 0 })
   })
 })
 
@@ -764,6 +771,18 @@ describe('backoff and page fairness', () => {
 
     expect(claimed).toHaveLength(5)
     expect(claimed.map((item) => item.trackingNumber).sort()).toEqual(ready)
+  })
+})
+
+describe('Seam: claimBatch secondary createdAt ordering (B.4)', () => {
+  it('claimBatch query orders by nextAttemptAt then createdAt', () => {
+    const source = readFileSync(resolve(__dirname, '../lib/smsQueue.js'), 'utf8')
+    const orderStart = source.indexOf('.orderBy(')
+    expect(orderStart).toBeGreaterThan(-1)
+    const chain = source.slice(orderStart)
+    expect(chain.indexOf(".orderBy('nextAttemptAt')")).toBeGreaterThan(-1)
+    expect(chain.indexOf(".orderBy('createdAt')")).toBeGreaterThan(-1)
+    expect(chain.indexOf(".orderBy('createdAt')")).toBeGreaterThan(chain.indexOf(".orderBy('nextAttemptAt')"))
   })
 })
 
