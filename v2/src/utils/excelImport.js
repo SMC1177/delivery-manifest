@@ -430,14 +430,26 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
     // chronological.
     const incomingDate = s.date || ''
     const storedDate = match.date || ''
-    if (incomingDate && storedDate && incomingDate < storedDate) {
-      skippedDuplicate++
-      continue
-    }
+    // A strictly older date refuses THE DATE, never the row.
+    //
+    // Refusing the row was measured to discard a tracking number that arrived
+    // on a corrected export — and because a tracking number goes from blank to a
+    // number and never changes again, that number never returns on a later
+    // import. The parcel ships, no message is ever sent, and nothing reports it.
+    //
+    // The guard's real job is untouched: the stale date itself is still refused
+    // in the merge below, so the stored date stays canonical and an out-of-order
+    // export still cannot become 'last file in order wins'. Every OTHER field on
+    // the row is the pharmacy's current statement about that parcel and merges
+    // normally.
+    const dateRegressed = Boolean(incomingDate && storedDate && incomingDate < storedDate)
 
     let changed = false
     const merged = {}
     for (const k of Object.keys(s)) {
+      // Both, not just `date`: the canonical date falls back to dateFilled, so
+      // letting dateFilled through would reintroduce the regression by proxy.
+      if (dateRegressed && (k === 'date' || k === 'dateFilled')) continue
       const incoming = s[k]
       const stored = k === 'dateOfBirth' ? (match.dob ?? match[k]) : match[k]
       if (stored === undefined) continue
