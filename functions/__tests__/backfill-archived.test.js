@@ -15,6 +15,7 @@ vi.mock('firebase-functions/v2/https', () => {
 
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: vi.fn(() => ({})),
+  FieldValue: { serverTimestamp: vi.fn(() => ({ _methodName: 'serverTimestamp' })) },
 }))
 
 import { backfillArchivedFlag } from '../backfill-archived.js'
@@ -67,10 +68,14 @@ function makeFakeDb({
     commit: batchCommit,
   }))
 
+  // ── org doc ─────────────────────────────────────────────────────
+  const orgUpdate = vi.fn().mockResolvedValue({ writeTime: {} })
+
   // ── doc routing ─────────────────────────────────────────────────
   function docImpl(path) {
     if (path.includes('/members/')) return memberRef
     if (path.includes('/shipments/')) return cursorDocRef
+    if (path === 'organizations/test-org') return { update: orgUpdate }
     return { get: vi.fn().mockResolvedValue({ exists: false, data: () => ({}) }) }
   }
   const doc = vi.fn(docImpl)
@@ -88,6 +93,7 @@ function makeFakeDb({
     batchUpdate,
     batchCommit,
     queryObj,
+    orgUpdate,
   }
 }
 
@@ -592,5 +598,93 @@ describe('backfillArchivedFlag', () => {
     }
 
     await expect(backfillArchivedFlag(request)).rejects.toThrow('Backfill failed')
+  })
+
+  // ======================================================================
+  // BACKFILL COMPLETION FLAG — org document writes
+  // ======================================================================
+
+  it('writes archiveBackfillComplete:true and completion timestamp on the org doc when done', async () => {
+    // A complete (done:true) run must stamp the org so the client knows
+    // archived filtering is safe for that org.
+    const docs = [shipment('doc1', { name: 'First' })]
+
+    const { fakeDb, orgUpdate } = makeFakeDb({
+      memberSnap: adminMemberSnap(),
+      shipments: docs,
+    })
+    const { getFirestore, FieldValue } = await import('firebase-admin/firestore')
+    getFirestore.mockReturnValue(fakeDb)
+
+    const request = {
+      auth: { uid: 'admin1', token: {} },
+      data: { slug: 'test-org' },
+    }
+
+    const result = await backfillArchivedFlag(request)
+
+    expect(result.done).toBe(true)
+
+    expect(orgUpdate).toHaveBeenCalledTimes(1)
+    expect(orgUpdate).toHaveBeenCalledWith({
+      archiveBackfillComplete: true,
+      archiveBackfillCompletedAt: FieldValue.serverTimestamp(),
+    })
+  })
+
+  it('does NOT write completion flag on an intermediate (non-final) chunk', async () => {
+    // A half-backfilled org marked ready would hide its own un-stamped records.
+    // This is the exact disaster the flag logic exists to prevent.
+    const allDocs = Array.from({ length: 5 }, (_, i) =>
+      shipment(`chunk-doc${i + 1}`, { name: `Shipment ${i + 1}` })
+    )
+
+    const { fakeDb, orgUpdate } = makeFakeDb({
+      memberSnap: adminMemberSnap(),
+      shipments: allDocs,
+    })
+    const { getFirestore } = await import('firebase-admin/firestore')
+    getFirestore.mockReturnValue(fakeDb)
+
+    const request = {
+      auth: { uid: 'admin1', token: {} },
+      data: { slug: 'test-org', limit: 3 },
+    }
+
+    const result = await backfillArchivedFlag(request)
+
+    expect(result.done).toBe(false)
+    expect(result.cursor).toBeTruthy()
+
+    // The org document MUST NOT be touched on an intermediate chunk
+    expect(orgUpdate).not.toHaveBeenCalled()
+  })
+
+  it('marks completion even for an empty collection (zero shipments)', async () => {
+    // An org with no shipments is trivially "complete" — the backfill has
+    // processed everything (zero records), so the client may apply the
+    // archived filter without risk.
+    const { fakeDb, orgUpdate } = makeFakeDb({
+      memberSnap: adminMemberSnap(),
+      shipments: [],
+    })
+    const { getFirestore, FieldValue } = await import('firebase-admin/firestore')
+    getFirestore.mockReturnValue(fakeDb)
+
+    const request = {
+      auth: { uid: 'admin1', token: {} },
+      data: { slug: 'test-org' },
+    }
+
+    const result = await backfillArchivedFlag(request)
+
+    expect(result.done).toBe(true)
+    expect(result.processed).toBe(0)
+
+    expect(orgUpdate).toHaveBeenCalledTimes(1)
+    expect(orgUpdate).toHaveBeenCalledWith({
+      archiveBackfillComplete: true,
+      archiveBackfillCompletedAt: FieldValue.serverTimestamp(),
+    })
   })
 })

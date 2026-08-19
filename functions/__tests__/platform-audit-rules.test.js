@@ -89,4 +89,42 @@ describe('firestore.rules — security invariants', () => {
     expect(body).not.toBeNull()
     expect(body).toContain('request.auth.uid == userId')
   })
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Members subcollection rules — guards against the self-join security hole.
+  // Before the fix, allow create permitted request.auth.uid == memberId,
+  // letting ANY signed-in user create their own membership in ANY org.
+  // The fix: create is admin-only; update still allows self-update (needed
+  // for MFA enrollment).
+  // ══════════════════════════════════════════════════════════════════════════
+
+  it('members allow create MUST NOT permit self-create (no request.auth.uid == memberId)', () => {
+    const body = extractBlockBody(/match\s+\/members\/\{\w+\}\s*\{/)
+    expect(body).not.toBeNull()
+
+    // Extract the create rule
+    const createMatch = body.match(/allow\s+create\s*:\s*[^;]+;/)
+    expect(createMatch).not.toBeNull()
+    const createRule = createMatch[0]
+
+    // THE INVARIANT: create must NOT allow self-uid matching
+    expect(createRule).not.toMatch(/request\.auth\.uid\s*==\s*memberId/)
+    // Create must gate on isAdmin — only admins can add members
+    expect(createRule).toMatch(/isAdmin/)
+  })
+
+  it('members allow update STILL permits self-update (request.auth.uid == memberId)', () => {
+    const body = extractBlockBody(/match\s+\/members\/\{\w+\}\s*\{/)
+    expect(body).not.toBeNull()
+
+    // Extract the update rule
+    const updateMatch = body.match(/allow\s+update\s*:\s*[^;]+;/)
+    expect(updateMatch).not.toBeNull()
+    const updateRule = updateMatch[0]
+
+    // THE INVARIANT: update MUST still allow self-uid matching
+    // This is required for MFA enrollment — tightening it would re-create
+    // a lockout fixed earlier today.
+    expect(updateRule).toMatch(/request\.auth\.uid\s*==\s*memberId/)
+  })
 })

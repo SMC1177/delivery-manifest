@@ -667,7 +667,7 @@ describe('archiveShipments', () => {
       auth: { uid: 'admin1', token: {} },
       data: { slug: 'test-org', mode: 'bogus' },
     }
-    await expect(archiveShipments(request)).rejects.toThrow('mode must be "cutoff" or "ids"')
+    await expect(archiveShipments(request)).rejects.toThrow('mode must be "cutoff", "ids", or "filter"')
   })
 
   it('rejects missing cutoffDate in cutoff mode', async () => {

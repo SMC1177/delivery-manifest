@@ -242,14 +242,16 @@ describe('Fuzzy Rules: Date Shipped / Ship Date', () => {
     expect(result.date).toBe('Ship Date')
   })
 
-  it('19. "Date Filled" still maps to date (regression)', () => {
+  it('19. "Date Filled" maps to dateFilled (w7-7 ruling)', () => {
     const result = autoMapColumns(['Date Filled', 'Tracking Number'])
-    expect(result.date).toBe('Date Filled')
+    expect(result.dateFilled).toBe('Date Filled')
+    expect(result.date).toBeUndefined()
   })
 
-  it('20. "Date Written" still maps to date (regression)', () => {
+  it('20. "Date Written" maps to dateWritten (w7-7 ruling)', () => {
     const result = autoMapColumns(['Date Written', 'Tracking Number'])
-    expect(result.date).toBe('Date Written')
+    expect(result.dateWritten).toBe('Date Written')
+    expect(result.date).toBeUndefined()
   })
 })
 
