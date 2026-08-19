@@ -44,6 +44,8 @@ const FIELD_GROUPS = {
   prescriberCity: 'Prescriber',
   prescriberState: 'Prescriber',
 
+  createdAt: 'Dates',
+
   trackingNumber: 'Delivery',
   carrier: 'Delivery',
   deliveryMethod: 'Delivery',
@@ -90,6 +92,17 @@ export const UNIVERSAL_FIELDS = [
   { key: 'prescriberAddress1', label: 'Prescriber Address1', required: false },
   { key: 'prescriberCity', label: 'Prescriber City', required: false },
   { key: 'prescriberState', label: 'Prescriber State', required: false },
+
+  // NOT an imported column — the system's own first-insert stamp, surfaced so the
+  // operator can see and sort by when a row was added. It is already on every
+  // document (21,078 of 21,078 rows across both orgs) and already immutable
+  // (19,693 rows have been updated since insert; none had it moved), so this is
+  // exposure, not a new field. Nothing can map a spreadsheet column onto it:
+  // autoMapColumns builds mappings from FUZZY_RULES, never from this list.
+  //
+  // render: 'timestamp', not 'date' — the four date fields above hold YYYY-MM-DD
+  // strings, but this one holds a Firestore Timestamp object.
+  { key: 'createdAt', label: 'Date Added', required: false, render: 'timestamp' },
   // Defaults applied to every entry above, so the display layer needs no second
   // list: storageKey falls back to the field's own key, and every imported field
   // is offerable as a column and as a settings toggle.  An entry that declares

@@ -17,7 +17,13 @@ describe('shipment field registry', () => {
     expect(Array.isArray(REGISTRY)).toBe(true)
     // 32 because c0ddad0b extended the list from 10 to cover all 33 export
     // columns, the five Ship To columns collapsing into one address entry.
-    expect(REGISTRY).toHaveLength(32)
+    // 33 = the 32 IMPORTED fields above, plus one that is not imported at all:
+    // createdAt, exposed as 'Date Added'. It is the system's own first-insert
+    // stamp — already on every one of the 21,078 live rows and never rewritten —
+    // so it is surfaced as a column rather than duplicated as a new field, and
+    // nothing can map a spreadsheet column onto it because autoMapColumns builds
+    // mappings from FUZZY_RULES, never from this registry.
+    expect(REGISTRY).toHaveLength(33)
     for (const field of REGISTRY) {
       expect(typeof field.key).toBe('string')
       expect(field.key.length).toBeGreaterThan(0)

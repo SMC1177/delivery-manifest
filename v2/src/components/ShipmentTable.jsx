@@ -10,6 +10,7 @@ import { useTextMessagingSettings } from '../hooks/useTextMessagingSettings'
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { SETTABLE_FIELDS } from '../constants/shipmentFields'
+import { formatCentralTime } from '../hooks/useShipments'
 
 const COLUMN_DEFS = [
   { key: 'date', label: 'Date' },
@@ -39,6 +40,12 @@ const registryCellText = (s, field) => {
   const raw = s[field.storageKey]
   if (raw === undefined || raw === null || raw === '') return '\u2014'
   if (Array.isArray(raw)) return raw.length ? raw.join(', ') : '\u2014'
+  // A Firestore Timestamp is an OBJECT, so String() would put '[object Object]'
+  // on the operator's screen. The registry declares which fields have that shape
+  // via render: 'timestamp', and formatCentralTime already copes with both a
+  // Timestamp and a plain value — `date.toDate ? date.toDate() : new Date(date)`
+  // — so it is reused rather than re-implemented here.
+  if (field.render === 'timestamp') return formatCentralTime(raw)
   return String(raw)
 }
 

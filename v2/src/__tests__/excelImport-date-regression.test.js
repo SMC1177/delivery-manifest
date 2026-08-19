@@ -11,7 +11,7 @@ vi.mock('xlsx', () => ({
 
 import * as XLSX from 'xlsx'
 
-const HEADERS = ['Patient Name', 'Tracking #', 'DOB', 'Rx #', 'Refill #', 'Date', 'Phone']
+const HEADERS = ['Patient Name', 'Tracking #', 'DOB', 'Rx #', 'Refill #', 'Date', 'Date Filled', 'Phone']
 
 const MAPPING = {
   patientName: 'Patient Name',
@@ -20,6 +20,10 @@ const MAPPING = {
   rxNumbers: 'Rx #',
   refillNumber: 'Refill #',
   date: 'Date',
+  // Mapped on purpose. Without it no case in this file could ever make the
+  // canonical date and Date Filled move independently, which is exactly why the
+  // over-refusal below survived a review green.
+  dateFilled: 'Date Filled',
   phone: 'Phone',
 }
 
@@ -31,6 +35,7 @@ function mockRow(o = {}) {
     'Rx #': o.rxNumbers ?? 'RX1',
     'Refill #': o.refillNumber ?? '1',
     Date: o.date ?? '2026-08-17',
+    'Date Filled': o.dateFilled ?? '2026-08-16',
     Phone: o.phone ?? '555-0100',
   }
 }
@@ -45,6 +50,12 @@ function existingDoc(o = {}) {
     refillNumber: o.refillNumber ?? '1',
     trackingNumber: o.trackingNumber ?? '',
     date: o.date ?? '2026-08-17',
+    // The STORED document must carry this too. The merge loop skips any key the
+    // stored doc does not already have (`if (stored === undefined) continue`),
+    // so without it an incoming Date Filled is dropped before any rule about
+    // date regression is consulted — and the forward-Date-Filled case below
+    // could never reach the behaviour it claims to test.
+    dateFilled: o.dateFilled ?? '2026-08-16',
     phone: o.phone ?? '555-0100',
     status: o.status ?? 'pending',
   }
@@ -125,6 +136,29 @@ describe('a date regression refuses the date, not the row', () => {
       'the date is refused and nothing else differs, so there is nothing to write',
     ).toHaveLength(0)
     expect(r.skippedDuplicate).toBe(1)
+  })
+
+  it('RED — a Date Filled that moved FORWARD survives a canonical date that moved back', async () => {
+    // The two dates are independent whenever the sheet maps its own Date column.
+    // A corrected export can pull the canonical date back while Date Filled
+    // advances, and Date Filled is still the pharmacy's current statement about
+    // when it filled the prescription — the rule is refuse the DATE, not every
+    // field that happens to be a date.
+    const r = await run(
+      [mockRow({ date: '2026-08-15', dateFilled: '2026-08-20', trackingNumber: 'T1' })],
+      [existingDoc({ date: '2026-08-17', dateFilled: '2026-08-16', trackingNumber: 'T1' })],
+    )
+
+    const applied = r.updates[0] ?? {}
+    expect(
+      applied.dateFilled,
+      'a forward Date Filled is current information and must not be thrown away with the stale canonical date',
+    ).toBe('2026-08-20')
+
+    expect(
+      applied.date,
+      'the canonical date is still refused — that part of the guard stands',
+    ).not.toBe('2026-08-15')
   })
 
   it('GUARD — a LATER date still updates normally', async () => {

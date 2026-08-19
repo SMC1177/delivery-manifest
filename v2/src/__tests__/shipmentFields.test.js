@@ -29,7 +29,10 @@ describe('shipment field registry — display metadata', () => {
     // Trident columns land in 32 registry entries. Snippet a1-universal-fields
     // recorded it: 'from 10 to the full set covering all 33 Trident columns,
     // adding 22 new keys' — and 10 + 22 = 32.
-    expect(UNIVERSAL_FIELDS).toHaveLength(32)
+    // 33 since createdAt joined as 'Date Added' — the system's own first-insert
+    // stamp, surfaced as a column rather than duplicated as a new field. 32 was
+    // the count of IMPORTED fields; this one is the first that is not imported.
+    expect(UNIVERSAL_FIELDS).toHaveLength(33)
   })
 
   it('every displayable field declares the key Firestore actually stores it under', () => {
@@ -131,7 +134,10 @@ describe('shipment field registry — display metadata', () => {
     expect(keys).toContain('ndc')
 
     // 32 registry entries less the 9 whose storage keys the core columns own.
-    expect(SETTABLE_FIELDS).toHaveLength(23)
+    // 24 = 33 registry entries less the 9 whose storage keys the core columns
+    // already own. createdAt is not among those 9, so it became settable the
+    // moment it entered the registry — no separate wiring was needed.
+    expect(SETTABLE_FIELDS).toHaveLength(24)
   })
 
   it('no settable field collides with the six toggles SettingsPage already hand-writes', () => {

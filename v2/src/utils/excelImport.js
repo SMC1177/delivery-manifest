@@ -447,9 +447,14 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
     let changed = false
     const merged = {}
     for (const k of Object.keys(s)) {
-      // Both, not just `date`: the canonical date falls back to dateFilled, so
-      // letting dateFilled through would reintroduce the regression by proxy.
-      if (dateRegressed && (k === 'date' || k === 'dateFilled')) continue
+      // ONLY the canonical date. An earlier version also skipped dateFilled,
+      // reasoning that it would otherwise reintroduce the regression by proxy.
+      // It cannot: the fallback runs in applyMapping on the INCOMING row, so when
+      // no Date column is mapped s.date already HOLDS the incoming dateFilled and
+      // trips the check itself. With a Date column mapped the two are independent,
+      // and skipping dateFilled threw away a fill date that had moved FORWARD —
+      // current information, discarded because a different field was stale.
+      if (dateRegressed && k === 'date') continue
       const incoming = s[k]
       const stored = k === 'dateOfBirth' ? (match.dob ?? match[k]) : match[k]
       if (stored === undefined) continue

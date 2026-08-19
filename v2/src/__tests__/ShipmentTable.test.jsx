@@ -342,6 +342,46 @@ describe('column visibility chooser', () => {
   })
 
 
+  it('RED — Date Added renders the stored createdAt as a date, not a stringified object', () => {
+    // createdAt already exists on every shipment: 21,078 of 21,078 rows across
+    // both live orgs, and it never moves — 19,693 rows have been updated since
+    // insert and not one had its createdAt dragged forward. So "Date Added"
+    // needs no new field, only exposure.
+    //
+    // The catch is the SHAPE. useShipments hands documents to the UI as
+    // `{ id: d.id, ...d.data() }` with no timestamp conversion, so createdAt
+    // arrives as a raw Firestore Timestamp. registryCellText ends in
+    // `String(raw)`, which renders that as an object. The fixture below is
+    // Timestamp-shaped on purpose — a plain string would pass without ever
+    // exercising the path the real data takes.
+    const before = mockOrgSettings.isFieldEnabled
+    try {
+      mockOrgSettings.isFieldEnabled = (f) => f === 'createdAt'
+      const { container } = renderShipments([
+        {
+          id: 'ts1',
+          patientName: 'Ada Lovelace',
+          rxNumbers: ['RX9'],
+          date: '2026-02-02',
+          status: 'delivered',
+          createdAt: { toDate: () => new Date('2026-08-15T14:30:00Z') },
+        },
+      ])
+
+      const headers = Array.from(container.querySelectorAll('thead th')).map((th) => th.textContent)
+      expect(headers, 'the stamp already on every row must be offerable as a column').toContain('Date Added')
+
+      const body = container.querySelector('tbody').textContent
+      expect(body, 'the cell must show the date the row was added').toContain('2026')
+      expect(
+        body.toLowerCase(),
+        'a Firestore Timestamp must not reach the screen through String(raw)',
+      ).not.toContain('object')
+    } finally {
+      mockOrgSettings.isFieldEnabled = before
+    }
+  })
+
   // ---- columns derived from the field registry ----
   // The table hard-codes 11 COLUMN_DEFS while the registry holds 32 fields, so
   // today only 11 of them can ever reach the screen. These pin the contract that
