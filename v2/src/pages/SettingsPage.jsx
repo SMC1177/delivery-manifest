@@ -14,6 +14,7 @@ import { scrubFieldFromShipments, SCRUBBABLE_FIELDS } from '../lib/scrubField'
 import ColumnMappingScreen from '../components/ColumnMappingScreen'
 import { readExcelHeaders, previewRemap } from '../utils/excelImport'
 import TextMessagingSection from '../components/TextMessagingSection'
+import { SETTABLE_FIELDS, FIELD_GROUP_ORDER } from '../constants/shipmentFields'
 
 function BrandingSection({ org, slug, updateOrgSettings, logAction, addToast }) {
   const logoInputRef = useRef(null)
@@ -341,6 +342,30 @@ export default function SettingsPage() {
     { key: 'notes', label: 'Notes', description: 'Additional notes per shipment' },
     { key: 'carrier', label: 'Carrier', description: 'Shipping carrier (UPS, FedEx, etc.)' },
     { key: 'redeliver', label: 'Redeliver Flag', description: 'Mark shipments as redelivery' },
+  ]
+
+  // Every OTHER imported field is a toggle too. They join the same list the six
+  // above live in, so the card renders them with the same rows — a second block
+  // of markup would look identical the day it was written and drift by the third
+  // edit.
+  //
+  // The key is the field's STORAGE key. handleFieldToggle writes it into
+  // enabledFields and the shipment table gates its column on the same string.
+  // Keying on the registry key would store 'dateOfBirth' where the table checks
+  // 'dob', leaving a toggle that reads ON above a column that never appears.
+  //
+  // .slice() is load-bearing: SETTABLE_FIELDS is a shared export and the table
+  // renders its columns from it in registry order. Sorting it in place here
+  // would reorder that table's columns from a settings page.
+  const TOGGLE_FIELDS = [
+    ...AVAILABLE_FIELDS,
+    ...SETTABLE_FIELDS.slice()
+      .sort((a, b) => FIELD_GROUP_ORDER.indexOf(a.group) - FIELD_GROUP_ORDER.indexOf(b.group))
+      .map((f) => ({
+        key: f.toggleKey,
+        label: f.label,
+        description: `${f.group} field, imported from the pharmacy spreadsheet`,
+      })),
   ]
 
   const enabledFields = org?.settings?.enabledFields || ['notes', 'carrier']
@@ -680,7 +705,7 @@ export default function SettingsPage() {
           Choose which optional fields appear on shipments. Core fields (Date, Patient Name, Rx Numbers, Tracking #, Status) are always shown.
         </p>
         <div className="space-y-3">
-          {AVAILABLE_FIELDS.map((field) => {
+          {TOGGLE_FIELDS.map((field) => {
             const isEnabled = enabledFields.includes(field.key)
             const canScrub = !isEnabled && SCRUBBABLE_FIELDS.includes(field.key)
             return (

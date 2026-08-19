@@ -341,6 +341,98 @@ describe('column visibility chooser', () => {
     )
   })
 
+
+  // ---- columns derived from the field registry ----
+  // The table hard-codes 11 COLUMN_DEFS while the registry holds 32 fields, so
+  // today only 11 of them can ever reach the screen. These pin the contract that
+  // a Settings toggle governs a column, whatever the field.
+
+  const registryShipments = [
+    {
+      id: 'r1',
+      patientName: 'Ada Lovelace',
+      dob: '1815-12-10',
+      rxNumbers: ['RX9'],
+      trackingNumber: 'TRK-9',
+      date: '2026-02-02',
+      status: 'delivered',
+      drugDescription: 'AMOXICILLIN 500MG CAP',
+    },
+  ]
+
+  const headersOf = (container) =>
+    Array.from(container.querySelectorAll('thead th')).map((th) => th.textContent)
+
+  it('RED — an enabled registry field renders a column with its label, and disabling it removes the column', () => {
+    const before = mockOrgSettings.isFieldEnabled
+    try {
+      mockOrgSettings.isFieldEnabled = (f) => f === 'drugDescription'
+      const on = renderShipments(registryShipments)
+      expect(
+        headersOf(on.container),
+        'a field enabled in Settings must produce a column bearing the registry label',
+      ).toContain('Dispensed Drug Description')
+      expect(on.getByText('AMOXICILLIN 500MG CAP')).toBeInTheDocument()
+      on.unmount()
+
+      // The other direction, in the same test: asserting only the absence would
+      // pass vacuously at HEAD, where this column never existed in the first place.
+      mockOrgSettings.isFieldEnabled = () => false
+      const off = renderShipments(registryShipments)
+      expect(headersOf(off.container)).not.toContain('Dispensed Drug Description')
+      expect(off.queryByText('AMOXICILLIN 500MG CAP')).toBeNull()
+    } finally {
+      mockOrgSettings.isFieldEnabled = before
+    }
+  })
+
+  it('RED — a saved visibleColumns list from before the field existed does not hide it', () => {
+    // Both live orgs already carry a saved list from 5d3b9f62, and isColumnVisible
+    // requires visibleColumns.includes(key) — so without this, a newly enabled
+    // column can never appear for either of them.
+    const before = mockOrgSettings.isFieldEnabled
+    mockOrgSettings.settings.visibleColumns = ['date', 'patientName', 'tracking', 'status']
+    try {
+      mockOrgSettings.isFieldEnabled = (f) => f === 'drugDescription'
+      const { container } = renderShipments(registryShipments)
+      expect(
+        headersOf(container),
+        'the Settings toggle governs the column; a stale saved list must not veto it',
+      ).toContain('Dispensed Drug Description')
+    } finally {
+      delete mockOrgSettings.settings.visibleColumns
+      mockOrgSettings.isFieldEnabled = before
+    }
+  })
+
+  it('GUARD — tracking renders exactly one column, never two', () => {
+    // COLUMN_DEFS keys this 'tracking' while the registry and Firestore both say
+    // 'trackingNumber'. A derived loop excluding by exact key match against the
+    // old list emits a second, identical Tracking column.
+    const before = mockOrgSettings.isFieldEnabled
+    try {
+      mockOrgSettings.isFieldEnabled = (f) => f === 'trackingNumber' || f === 'tracking'
+      const { container } = renderShipments(registryShipments)
+      const tracking = headersOf(container).filter((h) => h === 'Tracking #')
+      expect(tracking, 'one field must not produce two identical columns').toHaveLength(1)
+    } finally {
+      mockOrgSettings.isFieldEnabled = before
+    }
+  })
+
+  it('GUARD — the DOB column shows the stored dob value, not undefined', () => {
+    // Firestore persists this as `dob` while the registry key is `dateOfBirth`.
+    // A column keyed on the registry key alone reads undefined for every row.
+    const before = mockOrgSettings.isFieldEnabled
+    try {
+      mockOrgSettings.isFieldEnabled = (f) => f === 'dob' || f === 'dateOfBirth'
+      const { getByText } = renderShipments(registryShipments)
+      expect(getByText('1815-12-10')).toBeInTheDocument()
+    } finally {
+      mockOrgSettings.isFieldEnabled = before
+    }
+  })
+
   it('applies a saved per-org visible-columns preference', () => {
     mockOrgSettings.settings.visibleColumns = ['date', 'patientName', 'rxNumbers', 'tracking', 'status']
     try {

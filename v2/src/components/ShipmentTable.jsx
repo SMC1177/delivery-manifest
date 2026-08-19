@@ -9,6 +9,7 @@ import ShipmentModal from './ShipmentModal'
 import { useTextMessagingSettings } from '../hooks/useTextMessagingSettings'
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../lib/firebase'
+import { SETTABLE_FIELDS } from '../constants/shipmentFields'
 
 const COLUMN_DEFS = [
   { key: 'date', label: 'Date' },
@@ -28,6 +29,18 @@ const COLUMN_DEFS = [
 const ORG_GATED_COLUMNS = ['address', 'phone', 'dob', 'carrier', 'redeliver', 'notes']
 
 const DEFAULT_VISIBLE_COLUMNS = COLUMN_DEFS.map((c) => c.key)
+
+// The columns the registry contributes — every imported field the 11 columns
+// above do not already render — are derived once, in shipmentFields.js, because
+// the exclusion is computed from properties that file owns. The Settings card
+// consumes the same export, so the two can never drift apart.
+
+const registryCellText = (s, field) => {
+  const raw = s[field.storageKey]
+  if (raw === undefined || raw === null || raw === '') return '\u2014'
+  if (Array.isArray(raw)) return raw.length ? raw.join(', ') : '\u2014'
+  return String(raw)
+}
 
 // Frozen anchor columns (pinned while the table scrolls). Widths are fixed so
 // the sticky left offsets line up; they must match the w-* classes on the cells.
@@ -55,6 +68,11 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
   const savedVisibleColumns = settings?.visibleColumns
   const visibleColumns = columnOverride
     ?? (Array.isArray(savedVisibleColumns) && savedVisibleColumns.length > 0 ? savedVisibleColumns : DEFAULT_VISIBLE_COLUMNS)
+
+  // Gated on the Settings toggle ALONE. Both live orgs already have a saved
+  // visibleColumns list that predates every registry field, so consulting it
+  // would veto columns the operator just switched on.
+  const visibleRegistryColumns = SETTABLE_FIELDS.filter((f) => isFieldEnabled(f.toggleKey))
 
   const isColumnVisible = (key) =>
     visibleColumns.includes(key) && (!ORG_GATED_COLUMNS.includes(key) || isFieldEnabled(key))
@@ -273,6 +291,9 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
         </td>
       )}
       {isColumnVisible('notes') && <td className="px-4 py-3 text-slate-500 text-xs max-w-[150px] truncate">{s.notes || '\u2014'}</td>}
+      {visibleRegistryColumns.map((f) => (
+        <td key={f.key} className="px-4 py-3 text-slate-600 max-w-[200px] truncate">{registryCellText(s, f)}</td>
+      ))}
       {!readOnly && (
       <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
         <select
@@ -462,6 +483,9 @@ export default function ShipmentTable({ shipments, onEdit, onDelete, onStatusCha
               {isColumnVisible('status') && <th className="px-4 py-3 font-medium w-40 sticky top-0 bg-white z-10" style={{ left: frozenLeft.status }}>Status</th>}
               {isColumnVisible('redeliver') && <th className="px-4 py-3 font-medium">Redeliver</th>}
               {isColumnVisible('notes') && <th className="px-4 py-3 font-medium">Notes</th>}
+              {visibleRegistryColumns.map((f) => (
+                <th key={f.key} className="px-4 py-3 font-medium whitespace-nowrap">{f.label}</th>
+              ))}
               {!readOnly && <th className="px-4 py-3 font-medium text-right">Actions</th>}
             </tr>
           </thead>
