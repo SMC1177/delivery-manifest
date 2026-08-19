@@ -164,7 +164,7 @@ describe('parseExcelFile — pending-merge behaviour', () => {
     expect(result.trackingMerged).toBe(0)
   })
 
-  it('5. incoming row with empty rxNumbers AND empty refillNumber never merges onto a pending doc → becomes new shipment', async () => {
+  it('5. incoming row with empty rxNumbers AND empty refillNumber has no identity → needsReview, never inserted', async () => {
     const { file, sheetToJson } = freshMocks()
     sheetToJson
       .mockReturnValueOnce([mockRow({ trackingNumber: '1ZTRACK', rxNumbers: '', refillNumber: '' })])
@@ -184,10 +184,12 @@ describe('parseExcelFile — pending-merge behaviour', () => {
 
     const result = await parseExcelFile(file, BASE_MAPPING, existing)
 
-    // buildPatientFillKey returns null when both rx and refill are empty,
-    // so no merge happens — the row becomes a brand-new shipment
-    expect(result.shipments).toHaveLength(1)
-    expect(result.shipments[0].trackingNumber).toBe('1ZTRACK')
+    // buildPatientFillKey returns null when both rx and refill are empty, so
+    // the row has no identity.  Inserting it would re-insert it on every
+    // subsequent import forever, because nothing could ever match it back —
+    // so it is surfaced for review instead of silently duplicated.
+    expect(result.needsReview).toBe(1)
+    expect(result.shipments).toHaveLength(0)
     expect(result.updates).toHaveLength(0)
     expect(result.trackingMerged).toBe(0)
   })

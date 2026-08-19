@@ -299,19 +299,6 @@ export function getUnmappedColumns(allHeaders, mapping) {
 }
 
 /**
- * Build a composite dedup key from tracking #, Rx numbers, and refill #.
- * All parts are lowercased and trimmed. Rx numbers are sorted for consistency.
- */
-function buildDedupKey(trackingNumber, rxNumbers, refillNumber) {
-  const tracking = (trackingNumber || '').trim().toLowerCase()
-  const rx = Array.isArray(rxNumbers)
-    ? rxNumbers.map(r => String(r).trim().toLowerCase()).sort().join('|')
-    : String(rxNumbers || '').trim().toLowerCase()
-  const refill = String(refillNumber || '').trim().toLowerCase()
-  return `${tracking}::${rx}::${refill}`
-}
-
-/**
  * Build a patient-based fill key for matching tracking-less pending rows
  * against later tracking-bearing imports. Lowercases/trims all parts and sorts
  * Rx numbers the same way as buildDedupKey. Returns null if both rx and
@@ -363,30 +350,18 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
   const allMapped = applyMapping(rows, mapping)
   const unmappedColumns = getUnmappedColumns(allHeaders, mapping)
 
-  // Index existing shipments by composite key
-  const existingByKey = new Map()
+  // Index existing shipments by patient fill key → ARRAY of candidate docs.
+  // An array is required: 6,913 colliding identity keys exist in live data,
+  // so a Map to a single doc would silently drop all but one.  Stored docs
+  // persist the birth date as 'dob' while incoming rows carry 'dateOfBirth',
+  // hence the bridge below.
+  const existingByFillKey = new Map()
   for (const ship of existingShipments) {
-    const key = buildDedupKey(ship.trackingNumber, ship.rxNumbers, ship.refillNumber)
-    existingByKey.set(key, ship)
-  }
-
-  // Index existing tracking-less shipments by patient fill key
-  const pendingByFillKey = new Map()
-  const ambiguousFillKeys = new Set()
-  for (const ship of existingShipments) {
-    if (!ship.id) continue // skip docs without an id (should never happen, but guard)
-    if (ship.trackingNumber && ship.trackingNumber.trim()) continue
-    // Existing Firestore docs use 'dob' (not 'dateOfBirth') — the writer
-    // in ImportPreviewModal persists the field under that name.  Incoming
-    // mapped rows carry dateOfBirth (the mapped field name), so the key
-    // for existing docs must read ship.dob first.
     const fillKey = buildPatientFillKey(ship.patientName, ship.dob || ship.dateOfBirth, ship.rxNumbers, ship.refillNumber)
     if (!fillKey) continue
-    if (pendingByFillKey.has(fillKey)) {
-      ambiguousFillKeys.add(fillKey)
-    } else {
-      pendingByFillKey.set(fillKey, ship)
-    }
+    const arr = existingByFillKey.get(fillKey)
+    if (arr) arr.push(ship)
+    else existingByFillKey.set(fillKey, [ship])
   }
 
   let skippedNoTracking = 0
@@ -395,65 +370,111 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
   let trackingMerged = 0
   let needsReview = 0
   const shipments = [] // new inserts
-  const updates = []   // existing records with newer dates
-  const inFilePendingRows = new Map() // fillKey → in-file pending row (no id yet)
+  const updates = []   // merged non-blank changes against existing docs
 
   for (const s of allMapped) {
-    if (s.trackingNumber) {
-      // Row has a tracking number — try exact dedup first
-      const key = buildDedupKey(s.trackingNumber, s.rxNumbers, s.refillNumber)
-      const existing = existingByKey.get(key)
+    const fillKey = buildPatientFillKey(s.patientName, s.dateOfBirth, s.rxNumbers, s.refillNumber)
+    if (!fillKey) {
+      // No identity at all — surface for review, never insert.
+      needsReview++
+      continue
+    }
 
-      if (existing) {
-        // Composite key matched — check if date is newer
-        const newDate = s.date || ''
-        const oldDate = existing.date || ''
-        if (newDate > oldDate) {
-          // Newer date → update the existing record
-          updates.push({ shipmentId: existing.id, ...s })
-        } else {
-          // Same or older date → true duplicate, skip
-          skippedDuplicate++
-        }
-      } else {
-        // No match by tracking key — try pending merge
-        const fillKey = buildPatientFillKey(s.patientName, s.dateOfBirth, s.rxNumbers, s.refillNumber)
-        if (fillKey && pendingByFillKey.has(fillKey)) {
-          if (ambiguousFillKeys.has(fillKey)) {
-            needsReview++
-            continue
-          }
-          const pending = pendingByFillKey.get(fillKey)
-          updates.push({ shipmentId: pending.id, ...s })
-          trackingMerged++
-          pendingByFillKey.delete(fillKey)
-        } else if (fillKey && inFilePendingRows.has(fillKey)) {
-          // Matched an in-file pending row from the same spreadsheet —
-          // set the tracking number on the already-queued row instead
-          const inFileRow = inFilePendingRows.get(fillKey)
-          inFileRow.trackingNumber = s.trackingNumber
-          inFileRow.carrier = s.carrier
-          trackingMerged++
-          inFilePendingRows.delete(fillKey)
-        } else {
-          // No pending match either — brand-new shipment
-          shipments.push(s)
-        }
-      }
-    } else {
-      // Row lacks a tracking number — create as pending
-      const fillKey = buildPatientFillKey(s.patientName, s.dateOfBirth, s.rxNumbers, s.refillNumber)
-      if (fillKey && (pendingByFillKey.has(fillKey) || inFilePendingRows.has(fillKey))) {
-        // Already have a pending row with this fill key (persisted or in-file) — duplicate
-        skippedDuplicate++
+    const incomingTracking = String(s.trackingNumber || '').trim()
+    const candidates = existingByFillKey.get(fillKey) || []
+    const qualifying = candidates.filter((doc) => {
+      const docTracking = doc.trackingNumber == null ? '' : String(doc.trackingNumber).trim()
+      // Same parcel when the stored tracking is blank (pending) or equal
+      // IGNORING CASE; a different non-empty tracking number is a different
+      // parcel.  Case is folded because every other tracking comparison here
+      // folds it — buildDedupKey lowercases, and the SMS ledger dedupes
+      // case-insensitively — and a case variant slipping through would insert
+      // the very duplicate this guard exists to prevent.  Only the COMPARISON
+      // folds case: the value written is whatever the incoming row supplied.
+      return docTracking === '' || docTracking.toLowerCase() === incomingTracking.toLowerCase()
+    })
+
+    if (qualifying.length > 1) {
+      // Two or more stored docs could equally claim this row, so there is no
+      // honest way to choose.  Writing to one would strand the other as an
+      // orphan nothing ever matches again — surface it instead of guessing.
+      needsReview++
+      continue
+    }
+
+    const match = qualifying[0]
+
+    if (!match) {
+      // No existing doc for this identity + tracking — brand-new shipment.
+      // Append it to the key's array so a later row in this same file matches
+      // it instead of inserting a second copy.
+      shipments.push(s)
+      if (!incomingTracking) pendingCreated++
+      const arr = existingByFillKey.get(fillKey)
+      if (arr) arr.push(s)
+      else existingByFillKey.set(fillKey, [s])
+      continue
+    }
+
+    // Merge — an incoming blank (undefined, null, '', []) must not overwrite
+    // a populated stored value; '0' is data and is never blank.  Only keys
+    // present on the incoming row are compared, and only against keys the
+    // stored doc actually has (via the dob bridge).
+    // Out-of-order protection.  A re-imported file can be OLDER than what is
+    // already stored — a corrected export sent after a newer one — and
+    // 'replace old with new' must not quietly become 'last file in order wins'.
+    // This is NOT the removed date gate: an equal or newer date still updates
+    // on any field change, and only a strict regression is refused.  Both sides
+    // must be non-empty, because an unknown date is not an older one.
+    // normalizeDate emits YYYY-MM-DD on every path, so this compare is
+    // chronological.
+    const incomingDate = s.date || ''
+    const storedDate = match.date || ''
+    if (incomingDate && storedDate && incomingDate < storedDate) {
+      skippedDuplicate++
+      continue
+    }
+
+    let changed = false
+    const merged = {}
+    for (const k of Object.keys(s)) {
+      const incoming = s[k]
+      const stored = k === 'dateOfBirth' ? (match.dob ?? match[k]) : match[k]
+      if (stored === undefined) continue
+      const blank = incoming === undefined || incoming === null || incoming === '' || (Array.isArray(incoming) && incoming.length === 0)
+      if (blank) {
+        // Preserve the populated stored value in the payload (idempotent write).
+        if (stored !== '' && stored !== null) merged[k] = stored
         continue
       }
-      shipments.push(s)
-      pendingCreated++
-      if (fillKey) {
-        inFilePendingRows.set(fillKey, s)
+      let same
+      if (k === 'rxNumbers') {
+        const a = (Array.isArray(incoming) ? incoming : [incoming]).map(String).join('|')
+        const b = (Array.isArray(stored) ? stored : [stored]).map(String).join('|')
+        same = a === b
+      } else {
+        same = incoming === stored
+      }
+      if (!same) {
+        merged[k] = incoming
+        changed = true
       }
     }
+
+    if (!changed) {
+      skippedDuplicate++
+      continue
+    }
+
+    const hadNoTracking = match.trackingNumber == null || String(match.trackingNumber).trim() === ''
+    if (match.id) {
+      updates.push({ shipmentId: match.id, ...merged })
+    } else {
+      // In-file row (inserted earlier in this same file, no doc id yet) —
+      // fold the merged values in place; it is already in shipments.
+      Object.assign(match, merged)
+    }
+    if (hadNoTracking && incomingTracking !== '') trackingMerged++
   }
 
   return {
