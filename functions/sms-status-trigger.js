@@ -34,9 +34,8 @@ const trackingOf = (doc) => (doc && doc.trackingNumber ? String(doc.trackingNumb
  * operator's rule is that a tracked row gets the pending message, and until
  * the tracking number arrives there is nothing to key that message on.
  *
- * A row with no tracking number returns silently rather than throwing. Its
- * message is the "in progress" one, which is keyed on patient identity and is
- * not built yet; throwing here would make Firestore retry the trigger forever.
+ * A row with no tracking number returns silently rather than throwing;
+ * throwing here would make Firestore retry the trigger forever.
  */
 export async function onShipmentStatusChange({
   firestore,
