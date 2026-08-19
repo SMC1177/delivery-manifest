@@ -14,6 +14,27 @@ export function todayKey(date = new Date(), tz = CENTRAL_TZ) {
 }
 
 /**
+ * Should an item created at `createdAt` be HELD (not sent) at `now`?
+ *
+ * The 8 o'clock hour is reserved for PRIOR-DAY items: anything created
+ * today waits until 9:00 so yesterday's backlog drains first. Both the
+ * hour and the day key are computed in America/Chicago via Intl so the
+ * cap day, the hold day and the window hour can never disagree (DST-safe).
+ *
+ * hold  ⟺  hour(now, America/Chicago) === 8 AND todayKey(createdAt) === todayKey(now)
+ */
+export function shouldHoldForWindow({ now, createdAt }) {
+  const hour = Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: CENTRAL_TZ,
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).format(now),
+  )
+  return hour === 8 && todayKey(createdAt) === todayKey(now)
+}
+
+/**
  * Atomic check-and-increment against the per-org daily cap.
  * Returns { allowed: boolean, current: number, cap: number }.
  */
