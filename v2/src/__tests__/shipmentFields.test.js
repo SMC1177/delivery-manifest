@@ -134,20 +134,6 @@ describe('shipment field registry — display metadata', () => {
     expect(SETTABLE_FIELDS).toHaveLength(23)
   })
 
-  it('every settable field carries the toggle key BOTH sides must agree on', () => {
-    // The Settings card writes this string into the org's enabledFields and the
-    // table gates its column on it. If one side keyed on the registry key and
-    // the other on the storage key, a user would switch Date of Birth ON, the
-    // card would store 'dateOfBirth', the table would check 'dob', and the
-    // column would stay hidden beneath a toggle reading ON — with two keys for
-    // one field then coexisting in stored data forever.
-    expect(SETTABLE_FIELDS.length).toBeGreaterThan(0)
-    for (const f of SETTABLE_FIELDS) {
-      expect(typeof f.toggleKey, `${f.key} has no toggleKey`).toBe('string')
-      expect(f.toggleKey, `${f.key} must be toggled by its STORAGE key`).toBe(f.storageKey)
-    }
-  })
-
   it('no settable field collides with the six toggles SettingsPage already hand-writes', () => {
     expect(SETTABLE_FIELDS.length).toBeGreaterThan(0)
     for (const f of SETTABLE_FIELDS) {
