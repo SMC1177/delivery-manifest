@@ -69,3 +69,51 @@ describe('firestore.indexes.json — collection-scope compatibility', () => {
     }
   })
 })
+
+describe('firestore.indexes.json — Track Alert backfill (collection group)', () => {
+  const indexFile = JSON.parse(
+    readFileSync(resolve(__dirname, '../../firestore.indexes.json'), 'utf8')
+  )
+
+  it('shipments collection-group index must cover carrier, then status, then createdAt', () => {
+    const cgIndexes = (indexFile.indexes || []).filter(
+      (i) => i.collectionGroup === 'shipments' && i.queryScope === 'COLLECTION_GROUP'
+    )
+
+    const match = cgIndexes.find((i) => {
+      const paths = (i.fields || []).map((f) => f.fieldPath)
+      return (
+        paths.length === 3 &&
+        paths[0] === 'carrier' &&
+        paths[1] === 'status' &&
+        paths[2] === 'createdAt'
+      )
+    })
+
+    expect(
+      match,
+      'backfillTrackAlertSubscriptions runs collectionGroup("shipments") filtering carrier, ' +
+      'status and createdAt, so Firestore needs the composite index (carrier, status, createdAt) ' +
+      'at COLLECTION_GROUP scope. Without it the callable returns 500 INTERNAL to the browser — ' +
+      'which it did in production on 2026-08-20, three months after the createdAt filter shipped ' +
+      'in 980c3e7, because that index lived only in the Firebase console and never in this file. ' +
+      'An index that is not declared here is also pruned by the next firestore:indexes deploy.'
+    ).toBeDefined()
+
+    expect(
+      (match?.fields || []).every((f) => f.order === 'ASCENDING'),
+      'all three fields must be ASCENDING: the query uses equality on carrier and status and a ' +
+      '>= range on createdAt.'
+    ).toBe(true)
+  })
+
+  it('every declared index names a real query scope', () => {
+    for (const i of indexFile.indexes || []) {
+      expect(
+        ['COLLECTION', 'COLLECTION_GROUP'].includes(i.queryScope),
+        `index on ${i.collectionGroup} declares queryScope ${JSON.stringify(i.queryScope)}; ` +
+        'a wrong or missing scope deploys silently and then fails only at query time.'
+      ).toBe(true)
+    }
+  })
+})
