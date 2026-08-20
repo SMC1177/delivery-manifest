@@ -553,11 +553,11 @@ export async function previewRemap(file, mapping, existingShipments) {
     const changes = {}
     for (const [field, newValue] of Object.entries(parsed)) {
       if (field === 'trackingNumber') continue // don't diff the match key
-      const oldValue = existing[field] ?? ''
+      const oldValue = existing[field === 'dateOfBirth' ? 'dob' : field] ?? ''
       const newStr = String(newValue ?? '').trim()
       const oldStr = String(oldValue ?? '').trim()
       if (newStr && newStr !== oldStr) {
-        changes[field] = { oldValue: oldStr, newValue: newStr }
+        changes[field === 'dateOfBirth' ? 'dob' : field] = { oldValue: oldStr, newValue }
       }
     }
 
