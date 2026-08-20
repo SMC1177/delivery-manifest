@@ -4,12 +4,26 @@ import { normalizePhone } from './lib/phoneNormalize.js'
 import { checkSendPreconditions, checkOptInPolicy, userMessageFor } from './sms-gates.js'
 import { enqueue } from './lib/smsQueue.js'
 
+// The operator's rule: a delivered shipment must never trigger a text.
+// This is a server-side BACKSTOP, not a mirror of the frontend's SENDABLE_TEMPLATE_KEYS.
+// If this guard ever fires, the frontend re-enabled a forbidden template — fix it there,
+// do not weaken this. The automated status trigger does not pass through this callable.
+export const NEVER_MANUALLY_SENDABLE = ['delivered']
+
 export const sendSms = onCall(async (request) => {
   const firestore = getFirestore()
   const { orgSlug, shipmentId, templateKey, consentAffirmed = false } = request.data || {}
 
   if (!orgSlug || !shipmentId || !templateKey) {
     throw new HttpsError('invalid-argument', 'orgSlug, shipmentId, templateKey are required')
+  }
+
+  if (NEVER_MANUALLY_SENDABLE.includes(templateKey)) {
+    throw new HttpsError(
+      'failed-precondition',
+      `"${templateKey}" is never manually sendable — a delivered shipment must not trigger a text. ` +
+      `If you are seeing this, the frontend re-enabled it; fix the source, not this guard.`,
+    )
   }
 
   // Load org, settings, member, shipment in parallel

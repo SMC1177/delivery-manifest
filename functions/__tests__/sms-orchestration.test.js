@@ -128,7 +128,7 @@ describe('sendSms orchestration — double_opt_in', () => {
     const sendSms = await loadSendSms()
     await expect(sendSms({
       auth: { uid: 'u1' },
-      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'delivered' },
+      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'outForDelivery' },
     })).rejects.toMatchObject({ code: 'failed-precondition' })
   })
 
@@ -164,7 +164,7 @@ describe('sendSms orchestration — auto_opt_in', () => {
     const sendSms = await loadSendSms()
     const result = await sendSms({
       auth: { uid: 'u1' },
-      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'delivered' },
+      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'outForDelivery' },
     })
 
     expect(result).toEqual({ ok: true, status: 'queued', trackingNumber: '1Z999AA10123456784' })
@@ -185,7 +185,7 @@ describe('sendSms orchestration — manual_confirm', () => {
     const sendSms = await loadSendSms()
     await expect(sendSms({
       auth: { uid: 'u1' },
-      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'delivered', consentAffirmed: false },
+      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'outForDelivery', consentAffirmed: false },
     })).rejects.toMatchObject({ details: { code: 'consent_not_affirmed' } })
   })
 
@@ -202,7 +202,7 @@ describe('sendSms orchestration — manual_confirm', () => {
     const sendSms = await loadSendSms()
     const r = await sendSms({
       auth: { uid: 'u1' },
-      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'delivered', consentAffirmed: true },
+      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'outForDelivery', consentAffirmed: true },
     })
     expect(r).toEqual({ ok: true, status: 'queued', trackingNumber: '1Z999AA10123456784' })
     expect(global.fetch).not.toHaveBeenCalled()
@@ -223,7 +223,7 @@ describe('sendSms orchestration — failure paths', () => {
     const sendSms = await loadSendSms()
     await expect(sendSms({
       auth: { uid: 'u1' },
-      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'delivered' },
+      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'outForDelivery' },
     })).rejects.toMatchObject({
       code: 'invalid-argument',
       message: 'cannot queue a text for a shipment without a tracking number',
@@ -246,7 +246,7 @@ describe('sendSms orchestration — failure paths', () => {
     const sendSms = await loadSendSms()
     await expect(sendSms({
       auth: { uid: 'u1' },
-      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'delivered' },
+      data: { orgSlug: 'acme', shipmentId: 's1', templateKey: 'outForDelivery' },
     })).rejects.toMatchObject({ code: 'internal' })
 
     const auditLog = fs._collections.get('organizations/acme/auditLog')
@@ -277,7 +277,7 @@ describe('sendSms enqueues instead of sending directly', () => {
     const sendSms = await loadSendSms()
     const result = await sendSms({
       auth: { uid: 'u1' },
-      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'delivered' },
+      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'outForDelivery' },
     })
     expect(result).toEqual({ ok: true, status: 'queued', trackingNumber: '1Z999AA10123456784' })
     expect(global.fetch).not.toHaveBeenCalled()
@@ -291,11 +291,11 @@ describe('sendSms enqueues instead of sending directly', () => {
     const sendSms = await loadSendSms()
     await sendSms({
       auth: { uid: 'u1' },
-      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'delivered' },
+      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'outForDelivery' },
     })
     const second = await sendSms({
       auth: { uid: 'u1' },
-      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'delivered' },
+      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'outForDelivery' },
     })
     expect(second).toEqual({ ok: true, status: 'already_notified', trackingNumber: '1Z999AA10123456784' })
     expect(global.fetch).not.toHaveBeenCalled()
@@ -342,3 +342,45 @@ describe('consent-read fail-open', () => {
     expect(warnMessages.some((m) => m.includes('acme') && m.includes('+12815550200'))).toBe(true)
   })
 })
+
+describe('sendSms refuses a template that must never be sent manually', () => {
+  const ORG = 'acme'
+
+  function makeDocs(trackingNumber) {
+    return {
+      'organizations/acme': { name: 'Acme RX', settings: { enabledFields: ['phone'] } },
+      'organizations/acme/settings/textMessaging': baseSettings,
+      'organizations/acme/members/u1': { role: 'staff' },
+      'organizations/acme/shipments/s1': { phone: '+12815550200', patientName: 'John', trackingNumber },
+      'organizations/acme/smsContacts/+12815550200': { phone: '+12815550200', optIn: true },
+    }
+  }
+
+  it('rejects a "delivered" template and never enqueues the send', async () => {
+    const fs = makeFirestore({ docs: makeDocs('1Z999AA10123456784') })
+    globalThis.__testFirestore = fs
+    global.fetch = vi.fn()
+    _clearTokenCache()
+    const sendSms = await loadSendSms()
+    await expect(sendSms({
+      auth: { uid: 'u1' },
+      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'delivered' },
+    })).rejects.toThrow(/never/i)
+    // The rejection must happen before any enqueue attempt (the ledger-claim transaction).
+    expect(fs.runTransaction).not.toHaveBeenCalled()
+  })
+
+  it('allows "outForDelivery" through the same fixture, proving the fixture can succeed', async () => {
+    const fs = makeFirestore({ docs: makeDocs('1Z999AA10123456784') })
+    globalThis.__testFirestore = fs
+    global.fetch = vi.fn()
+    _clearTokenCache()
+    const sendSms = await loadSendSms()
+    const result = await sendSms({
+      auth: { uid: 'u1' },
+      data: { orgSlug: ORG, shipmentId: 's1', templateKey: 'outForDelivery' },
+    })
+    expect(result).toEqual({ ok: true, status: 'queued', trackingNumber: '1Z999AA10123456784' })
+  })
+})
+

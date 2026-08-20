@@ -182,3 +182,41 @@ describe('STATUS_TEMPLATE_KEYS', () => {
     expect(STATUS_TEMPLATE_KEYS.in_transit).toBeUndefined()
   })
 })
+
+describe('STATUS_TEMPLATE_KEYS — every value must name a template that exists', () => {
+  // The seven keys measured in BOTH organizations' settings.templates on
+  // 2026-08-20. templatesByLang is absent for tridentmedicalgroup, so this
+  // legacy map is resolveTemplate's only source - and it THROWS
+  // NoTemplateFoundError on a miss rather than returning empty.
+  const REAL_TEMPLATE_KEYS = [
+    'optInInvite',
+    'optInConfirm',
+    'optOutConfirm',
+    'nonKeywordRedirect',
+    'outForDelivery',
+    'delivered',
+    'addressIssue',
+  ]
+
+  it('maps every notifying status to a template key that actually exists', () => {
+    for (const [status, templateKey] of Object.entries(STATUS_TEMPLATE_KEYS)) {
+      expect(
+        REAL_TEMPLATE_KEYS,
+        `status "${status}" enqueues templateKey "${templateKey}", which is not a template any ` +
+        'organization stores. resolveTemplate throws NoTemplateFoundError on it, and the drain ' +
+        'increments the 250/day counter BEFORE the send attempt - so every retry burns a daily ' +
+        'send slot and no patient is ever told anything.',
+      ).toContain(templateKey)
+    }
+  })
+
+  it('still refuses to notify on delivered', () => {
+    // Guards the fix from over-reaching: mapping statuses to real templates
+    // must not quietly reintroduce the one the operator forbade.
+    expect(
+      Object.values(STATUS_TEMPLATE_KEYS),
+      "the operator's rule: a delivered status must never produce a message",
+    ).not.toContain('delivered')
+    expect(STATUS_TEMPLATE_KEYS.delivered).toBeUndefined()
+  })
+})

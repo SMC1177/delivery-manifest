@@ -24,7 +24,10 @@ export const TEMPLATE_LABELS = {
   addressIssue: 'Address issue',
 }
 
-export const SENDABLE_TEMPLATE_KEYS = ['optInInvite', 'outForDelivery', 'delivered', 'addressIssue']
+// Delivered shipments never trigger a text — the operator's rule is that a delivered package sends no SMS.
+// This list drives the manual Send Text dropdown; the automated trigger map in functions/sms-status-trigger.js
+// likewise has no delivered entry, so do not re-add it as an apparent omission.
+export const SENDABLE_TEMPLATE_KEYS = ['optInInvite', 'outForDelivery', 'addressIssue']
 
 export const TEMPLATE_DEFAULTS = {
   optInInvite: 'Hi from {{pharmacyName}}! Reply YES to get prescription delivery updates. Reply STOP to opt out.',

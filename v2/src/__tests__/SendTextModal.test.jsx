@@ -82,4 +82,17 @@ describe('<SendTextModal />', () => {
       consentAffirmed: false,
     })
   })
+
+  it('does not offer Delivered as a manually sendable template', () => {
+    useSmsContact.mockReturnValue({ derivedState: 'opted_in', loading: false, normalizedPhone: '+12815550200' })
+    render(<SendTextModal slug="acme" shipment={makeShipment()} onClose={() => {}} />)
+
+    const select = screen.getByRole('combobox', { name: /template/i })
+    const values = Array.from(select.querySelectorAll('option')).map(o => o.value)
+
+    expect(values).toContain('outForDelivery')
+    expect(values.length).toBeGreaterThan(1)
+    // A human must not be able to select Delivered.
+    expect(values).not.toContain('delivered')
+  })
 })

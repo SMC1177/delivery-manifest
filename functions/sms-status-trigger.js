@@ -9,13 +9,18 @@ import { enqueue } from './lib/smsQueue.js'
  * status outside it enqueues nothing — so changing the membership here does
  * not require touching a single test.
  *
+ * The keys are STATUS names and the values are TEMPLATE names — two different
+ * vocabularies that happen to share some spellings. A status is not a template:
+ * 'shipped' maps to the 'outForDelivery' template, 'exception' to the
+ * 'addressIssue' template.
+ *
  * 'delivered', 'pending' and 'archived' are absent on purpose. Pending is the state a row
  * is created in, and archived only means the row was filed; neither is a
  * delivery event the patient should hear about.
  */
 export const STATUS_TEMPLATE_KEYS = {
-  shipped: 'shipped',
-  exception: 'exception',
+  shipped: 'outForDelivery',
+  exception: 'addressIssue',
 }
 
 const trackingOf = (doc) => (doc && doc.trackingNumber ? String(doc.trackingNumber).trim() : '')
