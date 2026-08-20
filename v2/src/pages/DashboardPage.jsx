@@ -4,6 +4,7 @@ import { collection, addDoc, serverTimestamp, getDocs, writeBatch, doc, getDoc }
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'
 import { db, auth } from '../lib/firebase'
+import { buildSearchHaystack, matchesSearchQuery } from '../lib/shipmentSearch'
 import { useAuth } from '../contexts/AuthContext'
 import { useShipments, getCentralTimeDateString, formatCentralTime } from '../hooks/useShipments'
 import { useAuditLog } from '../hooks/useAuditLog'
@@ -176,27 +177,27 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false)
 
   // Shipments matching date + search filters (before status filter applied)
+  // The haystack depends on the SHIPMENT ALONE, never on the query, so it is
+  // built once per row here rather than rebuilt for every row on every
+  // keystroke. That distinction is the whole fix: the search itself then costs
+  // one String.includes per row instead of an array, a filter, a join and a
+  // toLowerCase. Keyed on [shipments] deliberately - adding `search` here
+  // would silently restore the old cost.
+  const shipmentsWithHaystack = useMemo(
+    () => shipments.map((s) => ({ s, haystack: buildSearchHaystack(s) })),
+    [shipments],
+  )
+
   const dateSearchFiltered = useMemo(() => {
-    return shipments.filter((s) => {
-      const shipDate = s.date || ''
-      if (dateFrom && shipDate < dateFrom) return false
-      if (dateTo && shipDate > dateTo) return false
-      if (search) {
-        const q = search.toLowerCase()
-        const haystack = [
-          s.patientName,
-          s.address,
-          s.trackingNumber,
-          ...(Array.isArray(s.rxNumbers) ? s.rxNumbers : []),
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-        if (!haystack.includes(q)) return false
-      }
-      return true
-    })
-  }, [shipments, dateFrom, dateTo, search])
+    return shipmentsWithHaystack
+      .filter(({ s, haystack }) => {
+        const shipDate = s.date || ''
+        if (dateFrom && shipDate < dateFrom) return false
+        if (dateTo && shipDate > dateTo) return false
+        return matchesSearchQuery(haystack, search)
+      })
+      .map(({ s }) => s)
+  }, [shipmentsWithHaystack, dateFrom, dateTo, search])
 
   const filtered = useMemo(() => {
     const result = statusFilter === 'all' ? dateSearchFiltered : dateSearchFiltered.filter((s) => s.status === statusFilter)
