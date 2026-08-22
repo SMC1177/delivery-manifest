@@ -256,7 +256,8 @@ export default function LoginPage() {
               setError('')
               setLoading(true)
               try {
-                await signInWithGoogle()
+                const result = await signInWithGoogle()
+                if (result && result.mfaRequired) { setMfaRequired(true); setLoading(false); return }
                 setTimeout(() => navigate(orgSlug ? `/${orgSlug}/dashboard` : '/setup'), 50)
               } catch (err) {
                 setError(err.message)
@@ -281,7 +282,8 @@ export default function LoginPage() {
               setError('')
               setLoading(true)
               try {
-                await signInWithMicrosoft()
+                const result = await signInWithMicrosoft()
+                if (result && result.mfaRequired) { setMfaRequired(true); setLoading(false); return }
                 setTimeout(() => navigate(orgSlug ? `/${orgSlug}/dashboard` : '/setup'), 50)
               } catch (err) {
                 if (err.code !== 'auth/popup-closed-by-user') {

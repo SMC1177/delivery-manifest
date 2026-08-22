@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth'
+import { EmailAuthProvider, multiFactor, reauthenticateWithCredential, updatePassword } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { useToast } from './Toast'
 import { useAuth } from '../contexts/AuthContext'
 import TotpSetup from './TotpSetup'
+import { resolveMfaEnrollmentState } from '../utils/mfaEnrollmentState'
 
 export default function AccountModal({ isOpen, onClose, userName, mfaRequired = false }) {
   const addToast = useToast()
@@ -12,10 +13,13 @@ export default function AccountModal({ isOpen, onClose, userName, mfaRequired = 
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [changing, setChanging] = useState(false)
+  const [liveFactorCount, setLiveFactorCount] = useState(null)
+  const [readFailed, setReadFailed] = useState(false)
 
   const isEmailUser = auth.currentUser?.providerData?.some((p) => p.providerId === 'password')
-  const enrolled = userData?.mfaEnrolled === true
-  const trapClose = mfaRequired && !enrolled
+  const canReadLiveFactors = !!auth.currentUser && typeof auth.currentUser.reload === 'function'
+  const mfaState = resolveMfaEnrollmentState({ storedFlag: userData?.mfaEnrolled === true, liveFactorCount, hasUser: canReadLiveFactors && !readFailed })
+  const trapClose = mfaRequired && mfaState === 'not-enrolled'
 
   async function handleChangePassword(e) {
     e.preventDefault()
@@ -50,6 +54,34 @@ export default function AccountModal({ isOpen, onClose, userName, mfaRequired = 
     }
   }
 
+  const currentUserId = auth.currentUser?.uid
+
+  useEffect(() => {
+    let cancelled = false
+    async function refreshLiveCount() {
+      setLiveFactorCount(null)
+      setReadFailed(false)
+      if (!canReadLiveFactors) {
+        console.warn('MFA enrollment state: no live factor source available')
+        return
+      }
+      try {
+        await auth.currentUser.reload()
+        const factors = multiFactor(auth.currentUser).enrolledFactors
+        if (!cancelled) setLiveFactorCount(factors.length)
+      } catch (err) {
+        setReadFailed(true)
+        console.warn('Failed to read MFA enrollment state:', err)
+      }
+    }
+    if (isOpen) {
+      refreshLiveCount()
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, currentUserId])
+
   // Prevent Escape key dismissal when mfaRequired and not enrolled
   useEffect(() => {
     if (!trapClose) return
@@ -63,7 +95,16 @@ export default function AccountModal({ isOpen, onClose, userName, mfaRequired = 
     return () => document.removeEventListener('keydown', handleKeyDown, true)
   }, [trapClose])
 
-  function handleMfaComplete() {
+  async function handleMfaComplete() {
+    try {
+      if (auth.currentUser) {
+        await auth.currentUser.reload()
+        setLiveFactorCount(multiFactor(auth.currentUser).enrolledFactors.length)
+        setReadFailed(false)
+      }
+    } catch (err) {
+      console.warn('Failed to refresh MFA enrollment state:', err)
+    }
     addToast('Two-factor authentication is now enabled on your account.')
   }
 
@@ -114,7 +155,9 @@ export default function AccountModal({ isOpen, onClose, userName, mfaRequired = 
 
           <div className="mb-6 pb-6 border-b border-slate-200">
             <h3 className="text-sm font-semibold text-slate-700 mb-3">Two-Factor Authentication</h3>
-            {enrolled ? (
+            {mfaState === 'checking' ? (
+              <p className="text-sm text-slate-500">Checking 2FA status…</p>
+            ) : mfaState === 'enrolled' ? (
               <div className="flex items-center gap-2 text-sm text-green-700">
                 <svg className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />

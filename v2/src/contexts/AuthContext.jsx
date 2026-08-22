@@ -111,7 +111,17 @@ export function AuthProvider({ children }) {
 
   async function signInWithGoogle() {
     const provider = new GoogleAuthProvider()
-    const cred = await signInWithPopup(auth, provider)
+    let cred
+    try {
+      cred = await signInWithPopup(auth, provider)
+    } catch (err) {
+      if (err.code === 'auth/multi-factor-auth-required') {
+        const resolver = getMultiFactorResolver(auth, err)
+        setMfaResolver(resolver)
+        return { user: null, mfaRequired: true, resolver }
+      }
+      throw err
+    }
     // Create user profile if it doesn't exist
     const profileSnap = await getDoc(doc(db, 'userProfiles', cred.user.uid))
     if (!profileSnap.exists()) {
@@ -151,6 +161,11 @@ export function AuthProvider({ children }) {
       }
       return cred.user
     } catch (err) {
+      if (err.code === 'auth/multi-factor-auth-required') {
+        const resolver = getMultiFactorResolver(auth, err)
+        setMfaResolver(resolver)
+        return { user: null, mfaRequired: true, resolver }
+      }
       if (err.code === 'auth/account-exists-with-different-credential') {
         // Store pending credential for linking after Google sign-in
         const pendingCred = OAuthProvider.credentialFromError(err)
@@ -230,14 +245,32 @@ export function AuthProvider({ children }) {
   }
 
   async function updateMfaStatus(enrolled) {
+    // The SDK is the truth when reachable; the explicit argument is the
+    // ruled fallback for the post-enroll refresh race.
+    let enrolledFinal = enrolled
+    if (orgSlug && auth.currentUser) {
+      try {
+        if (typeof auth.currentUser.reload === 'function') {
+          await auth.currentUser.reload()
+          const count = multiFactor(auth.currentUser).enrolledFactors.length
+          if (typeof count === 'number') {
+            enrolledFinal = count > 0
+          } else {
+            console.warn('updateMfaStatus: enrolled factors unreadable, using explicit value')
+          }
+        }
+      } catch (err) {
+        console.warn('updateMfaStatus: live MFA read failed, using explicit value', err)
+      }
+    }
     if (!orgSlug || !auth.currentUser) return
     const uid = auth.currentUser.uid
     await setDoc(
       doc(db, 'organizations', orgSlug, 'members', uid),
-      { mfaEnrolled: enrolled },
+      { mfaEnrolled: enrolledFinal },
       { merge: true }
     )
-    setUserData((prev) => (prev ? { ...prev, mfaEnrolled: enrolled } : prev))
+    setUserData((prev) => (prev ? { ...prev, mfaEnrolled: enrolledFinal } : prev))
   }
 
   async function unenrollMfa() {
