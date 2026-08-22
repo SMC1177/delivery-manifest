@@ -901,6 +901,7 @@ export { validateInvite } from './validate-invite.js'
 
 // --- Invite redemption (authenticated onCall — closes self-join hole) ---
 export { redeemInviteAndJoin } from './join-with-invite.js'
+export { resendStaffInvite, removeStaffAccount, linkExistingStaff } from './staff-lifecycle.js'
 
 // --- Backfill archived flag for shipment documents (admin-only onCall) ---
 export { backfillArchivedFlag } from './backfill-archived.js'
