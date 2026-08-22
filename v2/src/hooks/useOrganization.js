@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
+import { resendStaffInvite, removeStaffAccount, linkExistingStaff } from '../utils/staffLifecycleClient'
 
 export function useOrganization() {
   const { orgSlug: orgId, userData } = useAuth()
@@ -97,11 +98,20 @@ export function useOrganization() {
 
   async function removeMember(memberId) {
     if (!orgId) throw new Error('No organization')
-    const { deleteDoc: delDoc } = await import('firebase/firestore')
-    await delDoc(doc(db, 'organizations', orgId, 'members', memberId))
+    return removeStaffAccount(orgId, memberId)
+  }
+
+  async function resendInvite(memberId) {
+    if (!orgId) throw new Error('No organization')
+    return resendStaffInvite(orgId, memberId)
+  }
+
+  async function linkExisting(email, name, role) {
+    if (!orgId) throw new Error('No organization')
+    return linkExistingStaff(orgId, email, name, role)
   }
 
   const isAdmin = userData?.role === 'admin'
 
-  return { org, members, loading, isAdmin, addMember, updateMemberRole, removeMember, updateOrgSettings }
+  return { org, members, loading, isAdmin, addMember, updateMemberRole, removeMember, resendInvite, linkExisting, updateOrgSettings }
 }

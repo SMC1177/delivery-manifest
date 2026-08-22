@@ -172,7 +172,7 @@ function BrandingSection({ org, slug, updateOrgSettings, logAction, addToast }) 
 
 export default function SettingsPage() {
   const { slug } = useParams()
-  const { org, members, loading, isAdmin, updateMemberRole, removeMember, updateOrgSettings } = useOrganization(slug)
+  const { org, members, loading, isAdmin, updateMemberRole, removeMember, resendInvite, linkExisting, updateOrgSettings } = useOrganization(slug)
   const { invites, createInvite, deleteInvite } = useInvites(slug)
   const { logAction } = useAuditLog(slug)
   const { entries: auditEntries, loading: auditLoading } = useAuditLogEntries(slug, 50)
@@ -493,6 +493,23 @@ export default function SettingsPage() {
     } catch (err) {
       console.error('Manual add failed:', err)
       if (err.code === 'auth/email-already-in-use') {
+        const email = manualEmail.trim()
+        const name = manualName.trim()
+        const role = manualRole
+        if (confirm(`An account already exists for ${email}. Do you want to add it to the ${slug} organization as ${name} (${role})?`)) {
+          try {
+            await linkExisting(email, name, role)
+            await logAction('member.linked_existing', email, { name, email, role })
+            addToast(`${name} added using their existing account`)
+            setManualName('')
+            setManualEmail('')
+            setManualPassword('')
+            setManualRole('staff')
+          } catch (linkErr) {
+            addToast(linkErr.message, 'error')
+          }
+          return
+        }
         addToast('That email is already registered', 'error')
       } else {
         addToast(err.message || 'Failed to add member', 'error')
@@ -551,11 +568,25 @@ export default function SettingsPage() {
   }
 
   async function handleRemoveMember(memberId, memberName) {
-    if (!confirm(`Remove ${memberName} from the organization?`)) return
+    if (!confirm(`Remove ${memberName} from the organization? This permanently deletes their sign-in account and frees their email for re-use.`)) return
     try {
       await removeMember(memberId)
       await logAction('member.removed', memberId, { name: memberName })
-      addToast('Member removed')
+      addToast(`${memberName} removed. Their sign-in account was permanently deleted and their email is now free for re-use.`)
+    } catch (err) {
+      addToast(err.message, 'error')
+    }
+  }
+
+  async function handleResendInvite(memberId, memberName) {
+    try {
+      const { link } = await resendInvite(memberId)
+      try {
+        await navigator.clipboard.writeText(link)
+        addToast(`Verification link for ${memberName} copied to clipboard`)
+      } catch {
+        addToast(`Verification link for ${memberName}: ${link}`)
+      }
     } catch (err) {
       addToast(err.message, 'error')
     }
@@ -827,6 +858,12 @@ export default function SettingsPage() {
                       )}
                     </td>
                     <td className="py-3 text-right">
+                      <button
+                        onClick={() => handleResendInvite(m.id, m.name)}
+                        className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
+                      >
+                        Resend link
+                      </button>
                       <button
                         onClick={() => handleRemoveMember(m.id, m.name)}
                         className="text-red-600 hover:text-red-800 text-xs font-medium"
