@@ -17,6 +17,7 @@ import AdminProtectedRoute from './components/AdminProtectedRoute'
 import AdminDashboardPage from './pages/AdminDashboardPage'
 import ArchivePage from './pages/ArchivePage'
 import PatientPage from './pages/PatientPage'
+import FacilityPage from './pages/FacilityPage'
 
 function OrgRedirect() {
   const { orgSlug, loading } = useAuth()
@@ -84,6 +85,7 @@ export default function App() {
             >
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="patient" element={<PatientPage />} />
+              <Route path="facility" element={<FacilityPage />} />
               <Route path="import" element={<ImportPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="archive" element={<ArchivePage />} />

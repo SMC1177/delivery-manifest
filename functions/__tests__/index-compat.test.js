@@ -117,3 +117,58 @@ describe('firestore.indexes.json — Track Alert backfill (collection group)', (
     }
   })
 })
+
+describe('firestore.indexes.json — facility tab bounded query', () => {
+  const indexFile = JSON.parse(
+    readFileSync(resolve(__dirname, '../../firestore.indexes.json'), 'utf8')
+  )
+
+  // The Facility tab (docs/superpowers/specs/2026-08-23-facility-tab.md) runs one bounded
+  // query: where('archived','==',false) + where('facilityName','==',selected) + date range +
+  // orderBy('date','desc'). Firestore serves that only from a composite index shaped
+  // [archived ASC, facilityName ASC, date DESC] in that exact order, at COLLECTION scope.
+  const facilityCandidates = (indexFile.indexes || []).filter(
+    (i) =>
+      i.collectionGroup === 'shipments' &&
+      (i.queryScope === 'COLLECTION' || i.queryScope === undefined)
+  )
+
+  const match = facilityCandidates.find((i) => {
+    const fields = (i.fields || []).map((f) => [f.fieldPath, f.order])
+    return (
+      fields.length === 3 &&
+      fields[0][0] === 'archived' &&
+      fields[0][1] === 'ASCENDING' &&
+      fields[1][0] === 'facilityName' &&
+      fields[1][1] === 'ASCENDING' &&
+      fields[2][0] === 'date' &&
+      fields[2][1] === 'DESCENDING'
+    )
+  })
+
+  it('must declare [archived ASC, facilityName ASC, date DESC] at COLLECTION scope', () => {
+    expect(
+      match,
+      `the facility tab runs where("archived","==",false), where("facilityName","==",selected), ` +
+      `a date range and orderBy("date","desc") in a single query, so Firestore needs the ` +
+      `composite index (archived ASC, facilityName ASC, date DESC) at COLLECTION scope on ` +
+      `shipments. Without it the query throws FAILED_PRECONDITION at runtime — a failure no ` +
+      `unit test can see, because mocks have no index requirement. A CREATING index fails ` +
+      `identically to a missing one, and an index added only in the Firebase console is pruned ` +
+      `by the next firestore:indexes deploy: file or nowhere.`
+    ).toBeDefined()
+  })
+
+  it('the date field must be DESCENDING and LAST — order matters to Firestore', () => {
+    const fields = (match?.fields || []).map((f) => [f.fieldPath, f.order])
+    expect(
+      fields.length === 3 &&
+        fields[2][0] === 'date' &&
+        fields[2][1] === 'DESCENDING',
+      'Firestore serves a query only from an index whose field order and direction match ' +
+      'exactly: a same-fields-different-order index (date not last, or date ASCENDING) does ' +
+      'not serve the facility tab query and throws FAILED_PRECONDITION at runtime.'
+    ).toBe(true)
+  })
+})
+

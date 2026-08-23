@@ -4,6 +4,7 @@ import { collection, doc, writeBatch, serverTimestamp, setDoc } from 'firebase/f
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
+import { collectFacilityNames, upsertFacilities } from '../utils/facilities'
 
 export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap, filename }) {
   const { user, orgSlug } = useAuth()
@@ -141,6 +142,11 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
         importedAt: serverTimestamp(),
         importedBy: user.uid,
       })
+
+      // Ensure facilities exist for rows this import processed (new + updated)
+      const names = collectFacilityNames([...shipments, ...updates])
+      const { failed } = await upsertFacilities(db, orgSlug, names)
+      if (failed.length > 0) console.warn('facilities upsert incomplete — will self-heal on next import:', failed)
 
       const parts = []
       if (imported > 0) parts.push(`${imported} new`)
