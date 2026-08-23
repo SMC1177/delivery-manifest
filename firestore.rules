@@ -48,6 +48,10 @@ service cloud.firestore {
       }
 
       // Shipments (PHI) — org members only.
+      match /facilities/{facilityId} {
+        allow read, write: if isMember(orgSlug);
+      }
+
       match /shipments/{shipmentId} {
         allow read, write: if isMember(orgSlug);
       }

@@ -32,7 +32,7 @@ export function useFacilities(slug) {
       .catch((err) => {
         if (!active) return;
         console.error('useFacilities: failed to load facilities', err);
-        setError(err);
+        setError(err?.message || String(err));
         setLoading(false);
       });
 
