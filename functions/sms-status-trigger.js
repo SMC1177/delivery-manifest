@@ -23,6 +23,23 @@ export const STATUS_TEMPLATE_KEYS = {
   exception: 'addressIssue',
 }
 
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * The 7-day recency gate on the pharmacy's OWN date (operator rule; seat seq
+ * 1397). The pharmacy date survives a wipe-and-reimport unchanged — createdAt
+ * does not — so backlogs and reimports stay silent. Fail-safe follows the
+ * smsLedger convention: an absent or unparseable date REFUSES, because refusing
+ * a send is recoverable and texting a stale row is not.
+ */
+export function isRecentDate(date, now = new Date()) {
+  if (!date || typeof date !== 'string') return false
+  const parsed = Date.parse(date)
+  if (Number.isNaN(parsed)) return false
+  const age = now.getTime() - parsed
+  return age >= -SEVEN_DAYS_MS && age <= SEVEN_DAYS_MS
+}
+
 const trackingOf = (doc) => (doc && doc.trackingNumber ? String(doc.trackingNumber).trim() : '')
 
 /**
@@ -49,6 +66,28 @@ export async function onShipmentStatusChange({
   shipmentId,
   now = new Date(),
 }) {
+  // Initial text: the FIRST text of the lifecycle. A pending row that GAINS its
+  // tracking number gets the trackingAssigned message — once per tracking via
+  // the enqueue-time ledger, and only when the pharmacy date is recent (the
+  // mass-text gate: a wipe-reimport resets every row to pending, so ungated
+  // this would text every patient in the backlog).
+  if (after && after.status === 'pending') {
+    const pendingTracking = trackingOf(after)
+    const pendingArrived = trackingOf(before) === '' && pendingTracking !== ''
+    if (pendingTracking && pendingArrived && isRecentDate(after.date, now)) {
+      await enqueue({
+        firestore,
+        orgSlug,
+        trackingNumber: pendingTracking,
+        templateKey: 'trackingAssigned',
+        shipmentIds: shipmentId ? [shipmentId] : [],
+        now,
+      })
+      return { enqueued: true, templateKey: 'trackingAssigned', trackingNumber: pendingTracking }
+    }
+    return { enqueued: false, reason: 'pending_not_notifiable' }
+  }
+
   const templateKey = STATUS_TEMPLATE_KEYS[after && after.status]
   if (!templateKey) return { enqueued: false, reason: 'status_not_notifying' }
 
@@ -71,4 +110,32 @@ export async function onShipmentStatusChange({
   })
 
   return { enqueued: true, templateKey, trackingNumber: tracking }
+}
+
+/**
+ * Create-path twin of the pending branch: a row BORN with a tracking number in
+ * status pending (an import whose spreadsheet already carries tracking) gets
+ * the same initial text under the same gates. onDocumentUpdated never fires
+ * for creates, so this is wired into the shipment onDocumentCreated trigger.
+ */
+export async function onShipmentCreatedInitialSms({
+  firestore,
+  doc,
+  orgSlug,
+  shipmentId,
+  now = new Date(),
+}) {
+  if (!doc || doc.status !== 'pending') return { enqueued: false, reason: 'status_not_initial' }
+  const tracking = trackingOf(doc)
+  if (!tracking) return { enqueued: false, reason: 'no_tracking_number' }
+  if (!isRecentDate(doc.date, now)) return { enqueued: false, reason: 'date_not_recent' }
+  await enqueue({
+    firestore,
+    orgSlug,
+    trackingNumber: tracking,
+    templateKey: 'trackingAssigned',
+    shipmentIds: shipmentId ? [shipmentId] : [],
+    now,
+  })
+  return { enqueued: true, templateKey: 'trackingAssigned', trackingNumber: tracking }
 }

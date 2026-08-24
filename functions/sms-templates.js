@@ -9,7 +9,7 @@
  * renderTemplate actually receives at send time, so a name listed here but not
  * supplied there would pass validation and then fail mid-send.
  */
-export const TEMPLATE_VARS = ['pharmacyName', 'patientName', 'pharmacyPhone', 'prescriptionCount']
+export const TEMPLATE_VARS = ['pharmacyName', 'patientName', 'pharmacyPhone', 'prescriptionCount', 'trackingUrl', 'trackingNumber', 'carrier']
 
 /**
  * Validate that a template only references known placeholders.

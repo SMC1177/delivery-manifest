@@ -23,7 +23,7 @@ function requireVar(value, name) {
   return String(value)
 }
 
-export function buildBatchedVars({ item, pharmacyName, patientName, pharmacyPhone }) {
+export function buildBatchedVars({ item, pharmacyName, patientName, pharmacyPhone, trackingUrl, trackingNumber, carrier }) {
   const shipmentIds = item && Array.isArray(item.shipmentIds) ? item.shipmentIds : []
 
   return {
@@ -35,5 +35,11 @@ export function buildBatchedVars({ item, pharmacyName, patientName, pharmacyPhon
     // Rendering "your 0 prescriptions" would be worse than rounding up to the
     // one we know exists.
     prescriptionCount: Math.max(1, shipmentIds.length),
+    // Tracking vars are derived, not clinical: the URL falls back to the bare
+    // number upstream, and carrier is legitimately blank for unrecognized
+    // patterns — so no requireVar here, blank renders as empty string.
+    trackingUrl: String(trackingUrl || ''),
+    trackingNumber: String(trackingNumber || ''),
+    carrier: String(carrier || ''),
   }
 }

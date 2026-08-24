@@ -1,4 +1,4 @@
-const PLACEHOLDER = /{{(w+)}}/g
+const PLACEHOLDER = /{{(\w+)}}/g
 
 export function previewTemplate(template, vars) {
   return template.replace(PLACEHOLDER, (_, name) => vars[name] ?? `{{${name}}}`)
@@ -12,6 +12,7 @@ export const TEMPLATE_KEYS = [
   'outForDelivery',
   'delivered',
   'addressIssue',
+  'trackingAssigned',
 ]
 
 export const TEMPLATE_LABELS = {
@@ -22,6 +23,7 @@ export const TEMPLATE_LABELS = {
   outForDelivery: 'Out for delivery',
   delivered: 'Delivered',
   addressIssue: 'Address issue',
+  trackingAssigned: 'Tracking number assigned (initial message)',
 }
 
 // Delivered shipments never trigger a text — the operator's rule is that a delivered package sends no SMS.
@@ -37,6 +39,7 @@ export const TEMPLATE_DEFAULTS = {
   outForDelivery: 'Your prescription from {{pharmacyName}} is out for delivery today.',
   delivered: 'Your prescription from {{pharmacyName}} has been delivered.',
   addressIssue: '{{pharmacyName}}: There is an issue with your delivery address. Please call us.',
+  trackingAssigned: 'Hi {{patientName}}, your prescription from {{pharmacyName}} is on its way. Track it here: {{trackingUrl}}',
 }
 
 // ---- Slice 3 (w8-6 UI): languages + operator-approval drafts ----
@@ -63,6 +66,7 @@ export const TEMPLATE_DRAFT_TRANSLATIONS = {
     outForDelivery: 'Tu receta de {{pharmacyName}} está en camino hoy.',
     delivered: 'Tu receta de {{pharmacyName}} ha sido entregada.',
     addressIssue: '{{pharmacyName}}: Hay un problema con la dirección de entrega. Por favor llámanos.',
+    trackingAssigned: 'Hola {{patientName}}, tu receta de {{pharmacyName}} está en camino. Síguela aquí: {{trackingUrl}}',
   },
   fr: {
     optInInvite: 'Bonjour de {{pharmacyName}}! Répondez OUI pour recevoir les mises à jour de livraison. Répondez STOP pour vous désabonner.',
@@ -72,5 +76,6 @@ export const TEMPLATE_DRAFT_TRANSLATIONS = {
     outForDelivery: "Votre ordonnance de {{pharmacyName}} est en cours de livraison aujourd'hui.",
     delivered: 'Votre ordonnance de {{pharmacyName}} a été livrée.',
     addressIssue: '{{pharmacyName}} : Il y a un problème avec votre adresse de livraison. Veuillez nous appeler.',
+    trackingAssigned: 'Bonjour {{patientName}}, votre ordonnance de {{pharmacyName}} est en route. Suivez-la ici : {{trackingUrl}}',
   },
 }

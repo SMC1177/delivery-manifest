@@ -6,7 +6,7 @@ import { initializeApp } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { mapFedExStatus } from './fedex-status.js'
 import { mapUpsStatus, deriveUpsStatusContext, isStaleDelivery } from './ups-status.js'
-import { onShipmentStatusChange } from './sms-status-trigger.js'
+import { onShipmentStatusChange, onShipmentCreatedInitialSms } from './sms-status-trigger.js'
 import { drainQueue } from './sms-queue-drain.js'
 import { sendQueuedMessage } from './sms-queue-send.js'
 import { detectCarrier } from './carrier-detection.js'
@@ -925,6 +925,33 @@ export { uploadOrgLogo } from './upload-org-logo.js'
 //
 // onShipmentStatusChange already decides which writes notify a patient and is tested
 // against every transition. This wrapper only adapts the Firestore event shape to it.
+// A row BORN with a tracking number in status pending gets the initial
+// trackingAssigned text under the same gates (7-day pharmacy date, per-tracking
+// ledger). onDocumentUpdated never fires for creates, so this sibling trigger
+// covers the import path. Multiple onDocumentCreated triggers on this document
+// already coexist (onShipmentCreated, onShipmentCreatedUsage) — this follows
+// that pattern and the wrapper idiom of onShipmentStatusChanged below.
+export const onShipmentCreatedInitialText = onDocumentCreated(
+  { document: 'organizations/{orgSlug}/shipments/{shipmentId}' },
+  async (event) => {
+    const doc = event.data?.data()
+    if (!doc) return
+
+    const { orgSlug, shipmentId } = event.params
+    try {
+      const result = await onShipmentCreatedInitialSms({ firestore, doc, orgSlug, shipmentId })
+      if (result.enqueued) {
+        console.log(
+          `onShipmentCreatedInitialText: queued ${result.templateKey} for TN ${result.trackingNumber} (org=${orgSlug})`
+        )
+      }
+    } catch (err) {
+      // A failed enqueue must never block the shipment write that triggered it.
+      console.error(`onShipmentCreatedInitialText: enqueue failed for org=${orgSlug}, shipment=${shipmentId}`, err)
+    }
+  }
+)
+
 export const onShipmentStatusChanged = onDocumentUpdated(
   { document: 'organizations/{orgSlug}/shipments/{shipmentId}' },
   async (event) => {

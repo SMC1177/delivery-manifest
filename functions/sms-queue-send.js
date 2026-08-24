@@ -17,6 +17,7 @@ import { renderTemplate, resolveTemplate } from './sms-templates.js'
 import { checkOrgMayText, checkOptInPolicy } from './sms-gates.js'
 import { buildBatchedVars } from './lib/smsBatching.js'
 import { sendRingCentralSms } from './ringcentral-sms.js'
+import { trackingUrlFor, carrierLabel } from './carrier-detection.js'
 import { getRingCentralCredsForOrg } from './lib/rcCredentials.js'
 
 function refuse(reason) {
@@ -91,6 +92,9 @@ export async function sendQueuedMessage({ firestore, orgSlug, item }) {
       pharmacyName: org?.name || orgSlug,
       patientName: shipments[0].patientName,
       pharmacyPhone: org?.contactPhone,
+      trackingUrl: trackingUrlFor(item.trackingNumber),
+      trackingNumber: String(item.trackingNumber || '').trim(),
+      carrier: carrierLabel(item.trackingNumber),
     })
   )
 

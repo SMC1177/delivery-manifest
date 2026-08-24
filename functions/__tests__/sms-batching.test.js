@@ -54,6 +54,9 @@ describe('buildBatchedVars', () => {
     const vars = buildBatchedVars({
       item: { shipmentIds: ['s_1'] },
       ...PHARMACY,
+      trackingUrl: 'https://www.fedex.com/fedextrack/?trknbr=539404639669',
+      trackingNumber: '539404639669',
+      carrier: 'FedEx',
       drugName: 'Celecoxib Oral Capsule 200 MG',
       ndc: '00093372755',
       drugGpi: '66100510002020',

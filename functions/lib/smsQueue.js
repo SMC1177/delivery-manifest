@@ -114,12 +114,29 @@ export async function claimBatch({
     .where('status', 'in', CLAIMABLE_STATUSES)
     .orderBy('nextAttemptAt')
     .orderBy('createdAt')
-    .limit(limit)
+    .limit(limit * 4)
     .get()
+
+  // Operator rule: the initial trackingAssigned message drains FIRST — it is
+  // the text carrying the tracking link the patient keeps, so every patient
+  // must receive it ASAP even when older items are due. The wider read bound
+  // (4x the page) lets priority items surface WITHOUT a template-filtered
+  // query, which would demand a new composite index; the query's
+  // nextAttemptAt/createdAt order is preserved within each class. The query
+  // remains a bound on how much is read — the in-transaction re-check is
+  // still the correctness rule.
+  const isInitialText = (d) => {
+    const data = typeof d.data === 'function' ? d.data() : null
+    return Boolean(data && data.templateKey === 'trackingAssigned')
+  }
+  const orderedDocs = [
+    ...page.docs.filter(isInitialText),
+    ...page.docs.filter((d) => !isInitialText(d)),
+  ]
 
   const claimed = []
 
-  for (const doc of page.docs) {
+  for (const doc of orderedDocs) {
     if (claimed.length >= limit) break
 
     const taken = await firestore.runTransaction(async (tx) => {
