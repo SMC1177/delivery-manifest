@@ -317,6 +317,26 @@ function buildPatientFillKey(patientName, dob, rxNumbers, refillNumber) {
 }
 
 /**
+ * Build a warning record for one row that resolved to a write. Holds a
+ * REFERENCE to the exact destination object the write consumes (never a
+ * copy, never an index), plus the values the warning rules inspect: the
+ * row's rx numbers (each trimmed) and its post-mapping patientName /
+ * dateOfBirth (trimmed).
+ *
+ * @param {object} dest - destination object already pushed into shipments/updates
+ * @param {object} s - the mapped incoming row
+ * @returns {{ dest: object, rxValues: string[], patientName: string, dob: string }}
+ */
+function makeWarningRecord(dest, s) {
+  return {
+    dest,
+    rxValues: (Array.isArray(s.rxNumbers) ? s.rxNumbers : []).map((r) => String(r).trim()),
+    patientName: (s.patientName || '').trim(),
+    dob: (s.dateOfBirth || '').trim(),
+  }
+}
+
+/**
  * Parse an Excel file using a saved column mapping.
  *
  * Dedup logic (for pharmacies that re-import daily with updated dates):
@@ -371,6 +391,9 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
   let needsReview = 0
   const shipments = [] // new inserts
   const updates = []   // merged non-blank changes against existing docs
+  // Warning records: one per row that resolved to a write, each holding the
+  // exact destination object the write consumes plus the warning inputs.
+  const recordedRows = []
 
   for (const s of allMapped) {
     const fillKey = buildPatientFillKey(s.patientName, s.dateOfBirth, s.rxNumbers, s.refillNumber)
@@ -409,6 +432,7 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
       // Append it to the key's array so a later row in this same file matches
       // it instead of inserting a second copy.
       shipments.push(s)
+      recordedRows.push(makeWarningRecord(s, s))
       if (!incomingTracking) pendingCreated++
       const arr = existingByFillKey.get(fillKey)
       if (arr) arr.push(s)
@@ -454,10 +478,29 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
       // trips the check itself. With a Date column mapped the two are independent,
       // and skipping dateFilled threw away a fill date that had moved FORWARD —
       // current information, discarded because a different field was stale.
-      if (dateRegressed && k === 'date') continue
+      if (dateRegressed && k === 'date') {
+        // Refuse the stale incoming date but CARRY the stored canonical date in
+        // the payload — omitting the key let the modal's `date: s.date || ''`
+        // fallback blank the stored date, permanently defeating this guard
+        // (adversarial HIGH finding, 2026-08-24).
+        const storedDate = match.date
+        if (storedDate !== undefined && storedDate !== '' && storedDate !== null) merged[k] = storedDate
+        continue
+      }
       const incoming = s[k]
       const stored = k === 'dateOfBirth' ? (match.dob ?? match[k]) : match[k]
-      if (stored === undefined) continue
+      if (stored === undefined) {
+        // A field the stored doc never had is NEW information — carry it. The
+        // omitted key let the modal write '' instead of the incoming value (the
+        // customer's "new columns didn't populate" symptom; adversarial round-3
+        // finding, 2026-08-24). Blank incoming still adds nothing.
+        const incomingBlank = incoming === undefined || incoming === null || incoming === '' || (Array.isArray(incoming) && incoming.length === 0)
+        if (!incomingBlank && Object.prototype.hasOwnProperty.call(mapping, k)) {
+          merged[k] = incoming
+          changed = true
+        }
+        continue
+      }
       const blank = incoming === undefined || incoming === null || incoming === '' || (Array.isArray(incoming) && incoming.length === 0)
       if (blank) {
         // Preserve the populated stored value in the payload (idempotent write).
@@ -472,8 +515,12 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
       } else {
         same = incoming === stored
       }
+      // Same-valued fields stay in the payload too — the modal's update mapping
+      // defaults missing fields to ''/[], which wiped stored identity on every
+      // partial change (adversarial finding 2026-08-24, seat ruling seq 1371).
+      // `changed` still decides whether the update fires at all.
+      merged[k] = incoming
       if (!same) {
-        merged[k] = incoming
         changed = true
       }
     }
@@ -485,18 +532,74 @@ export async function parseExcelFile(file, mapping, existingShipments = []) {
 
     const hadNoTracking = match.trackingNumber == null || String(match.trackingNumber).trim() === ''
     if (match.id) {
-      updates.push({ shipmentId: match.id, ...merged })
+      const updateObj = { shipmentId: match.id, ...merged }
+      updates.push(updateObj)
+      recordedRows.push(makeWarningRecord(updateObj, s))
     } else {
       // In-file row (inserted earlier in this same file, no doc id yet) —
       // fold the merged values in place; it is already in shipments.
       Object.assign(match, merged)
+      recordedRows.push(makeWarningRecord(match, s))
     }
     if (hadNoTracking && incomingTracking !== '') trackingMerged++
+  }
+
+  // Import warnings (operator ruling seq 1356): computed after the write loop
+  // from the recorded rows, so they observe exactly what the loop resolved
+  // into a write — needsReview rows and skipped rows leave no trace here.
+  const warnings = { repeatedRx: [], blankIdentity: { rows: [] } }
+  // File-wide per-rx distinct-patient counts — the threshold reflects the FILE
+  // the operator is looking at, not just rows that resolve to writes; skipped
+  // duplicates otherwise dilute the count below threshold on partially
+  // pre-existing files (adversarial round-4 finding, grounded ph-8a2f7e42).
+  const fileRxPatients = new Map()
+  for (const s of allMapped) {
+    const filePatientKey = `${String(s.patientName || '').trim().toLowerCase()}|${String(s.dateOfBirth || '').trim()}`
+    const rxList = Array.isArray(s.rxNumbers) ? s.rxNumbers : [s.rxNumbers]
+    for (const raw of rxList) {
+      const rx = String(raw || '').trim()
+      if (!rx) continue
+      let set = fileRxPatients.get(rx)
+      if (!set) {
+        set = new Set()
+        fileRxPatients.set(rx, set)
+      }
+      set.add(filePatientKey)
+    }
+  }
+  const rxStats = new Map()
+  for (const rec of recordedRows) {
+    if (rec.patientName === '' && rec.dob === '') {
+      if (!warnings.blankIdentity.rows.includes(rec.dest)) {
+        warnings.blankIdentity.rows.push(rec.dest)
+      }
+    }
+    // Patient key: lowercased name + '|' + dob — the warning rule's notion of
+    // a distinct patient.
+    const patientKey = `${rec.patientName.toLowerCase()}|${rec.dob}`
+    for (const rx of rec.rxValues) {
+      if (!rx) continue
+      let stats = rxStats.get(rx)
+      if (!stats) {
+        stats = { patients: new Set(), rows: [] }
+        rxStats.set(rx, stats)
+      }
+      stats.patients.add(patientKey)
+      if (!stats.rows.includes(rec.dest)) stats.rows.push(rec.dest)
+    }
+  }
+  for (const [value, stats] of rxStats) {
+    const fileCount = fileRxPatients.has(value) ? fileRxPatients.get(value).size : stats.patients.size
+    if ((fileCount >= 5 || /^(\d)\1+$/.test(value)) && stats.rows.length > 0) {
+      warnings.repeatedRx.push({ value, patientCount: fileCount, rows: stats.rows })
+    }
   }
 
   return {
     shipments,
     updates,
+    headers: allHeaders,
+    warnings,
     skippedNoTracking,
     skippedDuplicate,
     pendingCreated,
@@ -573,5 +676,54 @@ export async function previewRemap(file, mapping, existingShipments) {
     unchangedCount,
     unmatchedCount,
     totalInFile: allMapped.length,
+  }
+}
+
+/**
+ * Remove warned rows from a parse result. Returns NEW shipments/updates arrays
+ * (never mutates result) where each warning class whose include flag is not
+ * exactly true has its warned row objects removed from both arrays by object
+ * identity — the same references the write path would consume. Classes:
+ * 'repeatedRx' (all entries' rows) and 'blankIdentity' (its rows).
+ *
+ * @param {object} result - output of parseExcelFile
+ * @param {{ repeatedRx?: boolean, blankIdentity?: boolean }} [include] - warning classes to KEEP
+ * @returns {{ shipments: object[], updates: object[] }}
+ */
+export function filterWarnedRows(result, include = {}) {
+  const excluded = new Set()
+  if (include.repeatedRx !== true) {
+    for (const entry of result.warnings?.repeatedRx || []) {
+      for (const row of entry.rows) excluded.add(row)
+    }
+  }
+  if (include.blankIdentity !== true) {
+    for (const row of result.warnings?.blankIdentity?.rows || []) {
+      excluded.add(row)
+    }
+  }
+  return {
+    shipments: (result.shipments || []).filter((row) => !excluded.has(row)),
+    updates: (result.updates || []).filter((row) => !excluded.has(row)),
+  }
+}
+
+/**
+ * Compare two header lists. Added headers come from current (kept in current
+ * order); removed headers come from prev (kept in prev order). Null/undefined
+ * inputs are treated as empty arrays.
+ *
+ * @param {string[]|null|undefined} prevHeaders
+ * @param {string[]|null|undefined} currentHeaders
+ * @returns {{ added: string[], removed: string[] }}
+ */
+export function compareHeaders(prevHeaders, currentHeaders) {
+  const prev = Array.isArray(prevHeaders) ? prevHeaders : []
+  const current = Array.isArray(currentHeaders) ? currentHeaders : []
+  const prevSet = new Set(prev)
+  const currentSet = new Set(current)
+  return {
+    added: current.filter((h) => !prevSet.has(h)),
+    removed: prev.filter((h) => !currentSet.has(h)),
   }
 }

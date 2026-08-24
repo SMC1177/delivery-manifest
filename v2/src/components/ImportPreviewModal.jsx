@@ -1,22 +1,48 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ConflictReviewModal from './ConflictReviewModal'
-import { collection, doc, writeBatch, serverTimestamp, setDoc } from 'firebase/firestore'
+import { collection, doc, writeBatch, serverTimestamp, setDoc, getDocs, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from './Toast'
 import { collectFacilityNames, upsertFacilities } from '../utils/facilities'
+import { filterWarnedRows, compareHeaders } from '../utils/excelImport'
 
 export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap, filename }) {
   const { user, orgSlug } = useAuth()
   const addToast = useToast()
   const [importing, setImporting] = useState(false)
   const [showConflictReview, setShowConflictReview] = useState(false)
+  const [includeWarned, setIncludeWarned] = useState({ repeatedRx: false, blankIdentity: false })
 
   const { shipments, updates = [], skippedNoTracking, skippedDuplicate, totalRows, preview, unmappedColumns, pendingCreated = 0, trackingMerged = 0, needsReview = 0 } = result
+  const { shipments: displayShipments, updates: displayUpdates } = filterWarnedRows(result, includeWarned)
+  const [headersChanged, setHeadersChanged] = useState({ added: [], removed: [] })
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadPrevHeaders() {
+      if (!orgSlug) return
+      try {
+        const q = query(collection(db, 'organizations', orgSlug, 'imports'), orderBy('importedAt', 'desc'), limit(1))
+        const snap = await getDocs(q)
+        if (cancelled) return
+        const prev = snap.docs[0]?.data()
+        if (prev && Array.isArray(prev.headers) && prev.headers.length > 0 && Array.isArray(result.headers) && result.headers.length > 0) {
+          const diff = compareHeaders(prev.headers, result.headers)
+          if (diff.added.length > 0 || diff.removed.length > 0) setHeadersChanged(diff)
+        }
+      } catch (err) {
+        console.warn('Failed to load previous import headers:', err)
+      }
+    }
+    loadPrevHeaders()
+    return () => { cancelled = true }
+  }, [orgSlug])
 
   async function handleImport() {
     if (!orgSlug || !user) return
     setImporting(true)
+    const { shipments: writeShipments, updates: writeUpdates } = filterWarnedRows(result, includeWarned)
 
     try {
       const importId = crypto.randomUUID()
@@ -26,9 +52,9 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
       let updated = 0
 
       // Insert new shipments
-      for (let i = 0; i < shipments.length; i += BATCH_SIZE) {
+      for (let i = 0; i < writeShipments.length; i += BATCH_SIZE) {
         const batch = writeBatch(db)
-        const chunk = shipments.slice(i, i + BATCH_SIZE)
+        const chunk = writeShipments.slice(i, i + BATCH_SIZE)
         for (const s of chunk) {
           const ref = doc(colRef)
           batch.set(ref, {
@@ -84,9 +110,9 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
       }
 
       // Update existing shipments with newer dates
-      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+      for (let i = 0; i < writeUpdates.length; i += BATCH_SIZE) {
         const batch = writeBatch(db)
-        const chunk = updates.slice(i, i + BATCH_SIZE)
+        const chunk = writeUpdates.slice(i, i + BATCH_SIZE)
         for (const s of chunk) {
           const ref = doc(db, 'organizations', orgSlug, 'shipments', s.shipmentId)
           const updateData = {
@@ -138,13 +164,14 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
       // Write companion import record after shipments succeed
       await setDoc(doc(db, 'organizations', orgSlug, 'imports', importId), {
         filename: filename || '',
+        headers: result.headers || [],
         count: imported,
         importedAt: serverTimestamp(),
         importedBy: user.uid,
       })
 
       // Ensure facilities exist for rows this import processed (new + updated)
-      const names = collectFacilityNames([...shipments, ...updates])
+      const names = collectFacilityNames([...writeShipments, ...writeUpdates])
       const { failed } = await upsertFacilities(db, orgSlug, names)
       if (failed.length > 0) console.warn('facilities upsert incomplete — will self-heal on next import:', failed)
 
@@ -181,6 +208,24 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
             {skippedDuplicate > 0 && (
               <p className="text-amber-600">{skippedDuplicate} skipped (unchanged duplicates)</p>
             )}
+            {result.warnings?.repeatedRx?.length > 0 && (
+              <p className="text-amber-600">
+                {result.warnings.repeatedRx.reduce((n, w) => n + w.rows.length, 0)} rows carry a prescription number repeated across many patients ({result.warnings.repeatedRx.map(w => w.value).join(', ')}) — excluded from this import{' '}
+                <label className="inline-flex items-center gap-1">
+                  <input type="checkbox" checked={includeWarned.repeatedRx} onChange={() => setIncludeWarned(prev => ({ ...prev, repeatedRx: !prev.repeatedRx }))} />
+                  Include anyway
+                </label>
+              </p>
+            )}
+            {result.warnings?.blankIdentity?.rows?.length > 0 && (
+              <p className="text-amber-600">
+                {result.warnings.blankIdentity.rows.length} rows missing patient name and DOB — excluded from this import{' '}
+                <label className="inline-flex items-center gap-1">
+                  <input type="checkbox" checked={includeWarned.blankIdentity} onChange={() => setIncludeWarned(prev => ({ ...prev, blankIdentity: !prev.blankIdentity }))} />
+                  Include anyway
+                </label>
+              </p>
+            )}
             {pendingCreated > 0 && (
               <p className="text-amber-600">{pendingCreated} awaiting tracking</p>
             )}
@@ -198,6 +243,9 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
                 Review conflicts
               </button>
               </>
+            )}
+            {(headersChanged.added.length > 0 || headersChanged.removed.length > 0) && (
+              <p className="text-slate-500">Columns changed since last import — added: {headersChanged.added.length > 0 ? headersChanged.added.join(', ') : '—'} removed: {headersChanged.removed.length > 0 ? headersChanged.removed.join(', ') : '—'}</p>
             )}
             {unmappedColumns && unmappedColumns.length > 0 && (
               <p className="text-slate-500">{unmappedColumns.length} columns scrubbed (not stored)</p>
@@ -263,10 +311,10 @@ export default function ImportPreviewModal({ result, onClose, onSuccess, onRemap
           </button>
           <button
             onClick={handleImport}
-            disabled={importing || shipments.length === 0}
+            disabled={importing || (displayShipments.length === 0 && displayUpdates.length === 0)}
             className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
           >
-            {importing ? 'Importing…' : `Import ${shipments.length} Records`}
+            {importing ? 'Importing…' : `Import ${displayShipments.length} Records${displayUpdates.length > 0 ? ` + ${displayUpdates.length} Updates` : ''}`}
           </button>
         </div>
       </div>
