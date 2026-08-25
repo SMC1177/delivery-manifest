@@ -4,6 +4,27 @@ export function previewTemplate(template, vars) {
   return template.replace(PLACEHOLDER, (_, name) => vars[name] ?? `{{${name}}}`)
 }
 
+/**
+ * Templates whose text MUST carry at least one of the listed tokens.
+ * The initial trackingAssigned message is the tracking anchor every patient
+ * keeps (operator rule), so stripping both tokens breaks real functionality —
+ * the editor refuses the save and explains rather than persisting silently.
+ * Checked per language variant: the validator sees only text, so es/fr
+ * variants go through the same rule.
+ */
+export const REQUIRED_TEMPLATE_TOKENS = {
+  trackingAssigned: ['trackingUrl', 'trackingNumber'],
+}
+
+export function validateRequiredPlaceholders(templateKey, text) {
+  const required = REQUIRED_TEMPLATE_TOKENS[templateKey]
+  if (!required) return null
+  const body = String(text ?? '')
+  if (required.some((name) => body.includes(`{{${name}}}`))) return null
+  const tokens = required.map((name) => `{{${name}}}`).join(' or ')
+  return `This message must contain ${tokens} — patients use it to track their delivery. Removing both will break the tracking link every patient receives.`
+}
+
 export const TEMPLATE_KEYS = [
   'optInInvite',
   'optInConfirm',

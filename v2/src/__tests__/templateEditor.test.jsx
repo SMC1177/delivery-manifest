@@ -278,3 +278,26 @@ describe('<TextMessagingSection /> second-language save confirms on the real ges
     expect(toastText).toMatch(/saved/i)
   })
 })
+
+describe('initial-message save guard', () => {
+  it('refuses to save a trackingAssigned template stripped of both tracking tokens, and explains', () => {
+    mockSettings()
+    renderSection()
+    const textarea = screen.getByDisplayValue(/Track it here:/)
+    fireEvent.focus(textarea)
+    fireEvent.change(textarea, { target: { value: 'Hi {{patientName}}, your prescription shipped.' } })
+    fireEvent.blur(textarea)
+    expect(save).not.toHaveBeenCalled()
+    expect(screen.getByText(/break the tracking link/i)).toBeTruthy()
+  })
+
+  it('premise guard: a trackingAssigned edit that keeps a tracking token saves normally', () => {
+    mockSettings()
+    renderSection()
+    const textarea = screen.getByDisplayValue(/Track it here:/)
+    fireEvent.focus(textarea)
+    fireEvent.change(textarea, { target: { value: 'On its way: {{trackingNumber}}' } })
+    fireEvent.blur(textarea)
+    expect(save).toHaveBeenCalled()
+  })
+})

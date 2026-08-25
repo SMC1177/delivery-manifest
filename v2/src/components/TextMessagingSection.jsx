@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { useTextMessagingSettings } from '../hooks/useTextMessagingSettings'
-import { TEMPLATE_KEYS, TEMPLATE_LABELS, TEMPLATE_DEFAULTS, TEMPLATE_LANGUAGES, TEMPLATE_DRAFT_TRANSLATIONS } from '../lib/smsTemplateVars'
+import { TEMPLATE_KEYS, TEMPLATE_LABELS, TEMPLATE_DEFAULTS, TEMPLATE_LANGUAGES, TEMPLATE_DRAFT_TRANSLATIONS, validateRequiredPlaceholders } from '../lib/smsTemplateVars'
 
 // Server-enforced requirements, keyed like TEMPLATE_KEYS. Mirrors
 // functions/sms-templates.js validateOptInInvite (case-insensitive substring
@@ -102,9 +102,10 @@ function CredentialsForm({ value, onSave, onCancel }) {
   )
 }
 
-function TemplateTextarea({ label, stored, onCommit, requirement }) {
+function TemplateTextarea({ label, stored, onCommit, requirement, hardBlock }) {
   const [value, setValue] = useState(stored)
   const [focused, setFocused] = useState(false)
+  const [blockError, setBlockError] = useState(null)
   const baseRef = useRef(stored)        // server value our last write/seed was based on
   const committedRef = useRef(null)     // value of an in-flight write, null when none
 
@@ -133,6 +134,12 @@ function TemplateTextarea({ label, stored, onCommit, requirement }) {
 
   function handleBlur() {
     setFocused(false)
+    const blocked = hardBlock ? hardBlock(value) : null
+    if (blocked) {
+      setBlockError(blocked)
+      return
+    }
+    setBlockError(null)
     const lastWritten = committedRef.current ?? baseRef.current
     if (value !== lastWritten) {
       committedRef.current = value
@@ -165,6 +172,7 @@ function TemplateTextarea({ label, stored, onCommit, requirement }) {
           Must include the word{missingWords.length > 1 ? 's' : ''} {missingWords.join(' and ')}
         </p>
       )}
+      {blockError && <p className="text-xs text-red-600 mt-1">{blockError}</p>}
     </div>
   )
 }
@@ -173,10 +181,11 @@ function TemplateTextarea({ label, stored, onCommit, requirement }) {
 // Slice 3 (w8-6 UI): second-language template row (es/fr). Commits to
 // settings.templatesByLang[lang][key] on blur. Drafts are surfaced ONLY via an
 // explicit "Use draft" action — never auto-saved, so operator approval is real.
-function SecondLanguageTemplateRow({ language, label, stored, draft, onCommit, addToast }) {
+function SecondLanguageTemplateRow({ language, label, stored, draft, onCommit, addToast, hardBlock }) {
   const langLabel = TEMPLATE_LANGUAGES.find((l) => l.value === language)?.label || language
   const [value, setValue] = useState(stored)
   const [focused, setFocused] = useState(false)
+  const [blockError, setBlockError] = useState(null)
   const baseRef = useRef(stored)
   const committedRef = useRef(null)
   const draftAppliedRef = useRef(false) // a draft was explicitly applied; don't clobber
@@ -237,6 +246,12 @@ function SecondLanguageTemplateRow({ language, label, stored, draft, onCommit, a
   // to the button handler means the operator clicks Save and sees nothing. Both
   // paths route through here, and a no-op neither writes nor confirms.
   function commitAndConfirm(next) {
+    const blocked = hardBlock ? hardBlock(next) : null
+    if (blocked) {
+      setBlockError(blocked)
+      return
+    }
+    setBlockError(null)
     if (next === lastWrittenValue) return
     onCommit(next)
     setLastWrittenValue(next)
@@ -279,6 +294,7 @@ function SecondLanguageTemplateRow({ language, label, stored, draft, onCommit, a
         aria-label={`${langLabel} — ${label}`}
         className="w-full px-2 py-1 border rounded text-sm font-mono"
       />
+      {blockError && <p className="text-xs text-red-600 mt-1">{blockError}</p>}
     </div>
   )
 }
@@ -538,6 +554,7 @@ export default function TextMessagingSection({ slug, enabledFields, addToast, lo
                       label={`English — ${TEMPLATE_LABELS[k]}`}
                       stored={settings.templates?.[k] ?? TEMPLATE_DEFAULTS[k]}
                       requirement={TEMPLATE_REQUIREMENTS[k]}
+                      hardBlock={(v) => validateRequiredPlaceholders(k, v)}
                       onCommit={(v) => patch({ templates: { ...settings.templates, [k]: v } }, 'templates')}
                     />
                     {secondLanguage !== 'en' && (
@@ -546,6 +563,7 @@ export default function TextMessagingSection({ slug, enabledFields, addToast, lo
                         label={TEMPLATE_LABELS[k]}
                         stored={settings.templatesByLang?.[secondLanguage]?.[k] ?? ''}
                         draft={TEMPLATE_DRAFT_TRANSLATIONS[secondLanguage]?.[k] ?? ''}
+                        hardBlock={(v) => validateRequiredPlaceholders(k, v)}
                         addToast={addToast}
                         onCommit={(v) => patch({ templatesByLang: { ...(settings.templatesByLang || {}), [secondLanguage]: { ...(settings.templatesByLang?.[secondLanguage] || {}), [k]: v } } }, 'templatesByLang')}
                       />

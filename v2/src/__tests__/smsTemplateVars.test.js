@@ -6,6 +6,8 @@ import {
   SENDABLE_TEMPLATE_KEYS,
   TEMPLATE_DRAFT_TRANSLATIONS,
   previewTemplate,
+  REQUIRED_TEMPLATE_TOKENS,
+  validateRequiredPlaceholders,
 } from '../lib/smsTemplateVars'
 
 describe('trackingAssigned registry entry', () => {
@@ -38,6 +40,29 @@ describe('trackingAssigned registry entry', () => {
     })
     expect(out).toBe('Hi John, from Trident.')
     expect(previewTemplate('{{mystery}} stays', {})).toBe('{{mystery}} stays')
+  })
+
+  it('declares the tracking requirement for the initial message', () => {
+    expect(REQUIRED_TEMPLATE_TOKENS.trackingAssigned).toEqual(['trackingUrl', 'trackingNumber'])
+  })
+
+  it('accepts a trackingAssigned text containing either tracking placeholder, in any language', () => {
+    expect(validateRequiredPlaceholders('trackingAssigned', 'Track here: {{trackingUrl}}')).toBeNull()
+    expect(validateRequiredPlaceholders('trackingAssigned', 'Su numero: {{trackingNumber}}')).toBeNull()
+  })
+
+  it('refuses a trackingAssigned text with BOTH tracking placeholders removed, explaining the consequence', () => {
+    const msg = validateRequiredPlaceholders('trackingAssigned', 'Hi {{patientName}}, your prescription shipped.')
+    expect(msg).toBeTruthy()
+    expect(msg).toContain('{{trackingUrl}}')
+    expect(msg).toContain('{{trackingNumber}}')
+    expect(msg.toLowerCase()).toContain('track')
+    expect(msg.toLowerCase()).toContain('break')
+  })
+
+  it('leaves every other template key unrestricted', () => {
+    expect(validateRequiredPlaceholders('outForDelivery', 'plain text, no placeholders')).toBeNull()
+    expect(validateRequiredPlaceholders('delivered', '')).toBeNull()
   })
 
   it('ships es and fr operator-approval drafts preserving the placeholders', () => {
