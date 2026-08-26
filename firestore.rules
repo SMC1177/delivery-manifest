@@ -52,6 +52,14 @@ service cloud.firestore {
         allow read, write: if isMember(orgSlug);
       }
 
+      // Import runs - the companion record written after each import, read by the
+      // Archive page. Undo runs through an Admin SDK callable, so no client delete.
+      match /imports/{importId} {
+        // Deliberately NOT `write`: that shorthand includes delete, and undo runs
+        // through an Admin SDK callable that bypasses rules. Delete stays denied.
+        allow read, create, update: if isMember(orgSlug);
+      }
+
       match /shipments/{shipmentId} {
         allow read, write: if isMember(orgSlug);
       }
