@@ -268,9 +268,9 @@ export default function ArchivePage() {
             >
               {busy ? 'Running…' : 'Run Indexing Pass'}
             </button>
-            {busy && progress !== undefined && (
+            {busy && progress && progress.processed != null && (
               <span className="text-sm text-amber-700">
-                {progress} records processed
+                {progress.processed} records processed
               </span>
             )}
           </div>
@@ -304,9 +304,9 @@ export default function ArchivePage() {
             >
               {busy ? 'Running…' : 'Run Preparation Pass'}
             </button>
-            {busy && progress !== undefined && (
+            {busy && progress && progress.processed != null && (
               <span className="text-sm text-amber-700">
-                {progress} records processed
+                {progress.processed} records processed
               </span>
             )}
           </div>
